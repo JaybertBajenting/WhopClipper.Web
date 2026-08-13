@@ -68,29 +68,38 @@ Deploy and verify:
 
 Keep one backend instance for this version. Speed ranks are serialized in that process; one instance is appropriate for a company meeting and keeps ties deterministic.
 
-## 4. Deploy the frontend to DigitalOcean
+## 4. Deploy the frontend to Vercel
 
-Create a Static Site component from `FrontendGame`:
+1. Sign in to Vercel and click **Add New > Project**.
+2. Import the GitHub repository `JaybertBajenting/FrontendGame`.
+3. Configure the project with these values (Vercel will usually detect them automatically):
 
 | Setting | Value |
 | --- | --- |
-| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm run build` |
+| Framework preset | `Vite` |
+| Root directory | `./` |
+| Install command | `pnpm install --frozen-lockfile` |
+| Build command | `pnpm run build` |
 | Output directory | `dist` |
-| Catch-all document | `index.html` |
 
-Add this build-time variable:
+4. Before clicking **Deploy**, add this environment variable for **Production**, **Preview**, and **Development**:
 
 ```text
 VITE_API_URL=https://YOUR-BACKEND.ondigitalocean.app
 ```
 
-Deploy it. Copy the final frontend origin—only the scheme and hostname, with no trailing path—and set the backend runtime variable:
+Use the public HTTPS address of the DigitalOcean backend. Do not add `/api`, `/health`, or a trailing slash.
+
+5. Click **Deploy**. The included `vercel.json` sends frontend routes such as `/host`, `/play`, and `/projector` to `index.html`, so direct links and browser refreshes work.
+6. Copy the final Vercel origin—only the scheme and hostname, with no trailing path—and set this encrypted runtime variable on the DigitalOcean backend:
 
 ```text
-Game__AllowedOrigins=https://YOUR-FRONTEND.ondigitalocean.app
+Game__AllowedOrigins=https://YOUR-PROJECT.vercel.app
 ```
 
-Redeploy the backend after updating CORS. If you later add a custom domain, add it to `Game__AllowedOrigins`; multiple origins can be comma-separated.
+7. Redeploy the backend after updating CORS. The frontend cannot call the API until its exact Vercel origin is allowed.
+
+Vercel automatically deploys new pushes to the production branch and creates preview deployments for other branches. Preview URLs use different origins; add a specific preview origin to `Game__AllowedOrigins` when you need that preview to call the backend. Multiple origins can be comma-separated. If you later add a custom domain, add that exact HTTPS origin too.
 
 ## 5. Smoke test before the meeting
 
@@ -162,7 +171,7 @@ Rounds can only be added or deleted while the game is still in the lobby. Create
 
 **Images do not upload:** Confirm the private bucket name and backend `Game__SupabaseUrl` and `Game__SupabaseServiceRoleKey` values. The browser never receives this key.
 
-**Routes show 404 after refresh:** Set the static site's catch-all document to `index.html`.
+**Routes show 404 after refresh:** Confirm `vercel.json` exists at the repository root and redeploy the frontend.
 
 **Database connection fails:** Use Supabase's session-pooler URI on port `5432`, replace the password placeholder, and URL-encode password characters.
 
