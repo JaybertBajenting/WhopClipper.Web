@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { ArrowRight, LogOut, Plus, Users } from "lucide-react"
+import { ArrowRight, Copy, LogOut, Plus, Users } from "lucide-react"
 import { Link, Navigate, useNavigate } from "react-router-dom"
 import { AppShell } from "@/components/app-shell"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,7 @@ export function HostDashboardPage() {
   const [title, setTitle] = useState("All-Hands Desk Detective")
   const [error, setError] = useState("")
   const [creating, setCreating] = useState(false)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!hostKey) return
@@ -47,6 +48,19 @@ export function HostDashboardPage() {
     navigate("/host")
   }
 
+  async function duplicate(game: HostGameSummary) {
+    setDuplicatingId(game.id)
+    setError("")
+    try {
+      const copy = await api.duplicateGame(hostKey!, game.id, `${game.title} (Copy)`.slice(0, 120))
+      navigate(`/host/games/${copy.id}`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not duplicate the game.")
+    } finally {
+      setDuplicatingId(null)
+    }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -56,7 +70,7 @@ export function HostDashboardPage() {
           <Card className="h-fit"><CardHeader><CardTitle className="flex items-center gap-2"><Plus className="text-amber-300" /> New game</CardTitle><CardDescription>Create a room first, then add workstation rounds.</CardDescription></CardHeader><CardContent><form onSubmit={create} className="space-y-4"><div className="space-y-2"><Label htmlFor="title">Meeting title</Label><Input id="title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} required /></div><Button className="w-full" disabled={creating}>{creating ? "Creating…" : "Create game"}</Button></form></CardContent></Card>
           <div className="space-y-3">
             {games.length === 0 ? <Card><CardContent className="py-16 text-center text-zinc-500">No games yet. Create the first one.</CardContent></Card> : games.map((game) => (
-              <Link key={game.id} to={`/host/games/${game.id}`} className="block"><Card className="transition hover:border-zinc-600 hover:bg-zinc-900"><CardContent className="flex items-center gap-4 p-5"><div className="grid size-14 shrink-0 place-items-center rounded-xl bg-zinc-800 font-mono font-black text-amber-300">{game.code}</div><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{game.title}</h2><div className="mt-2 flex flex-wrap gap-2"><Badge variant="secondary"><Users /> {game.playerCount}</Badge><Badge variant="secondary">{game.roundCount} rounds</Badge><Badge variant={game.status === "Finished" ? "success" : "default"}>{game.status}</Badge></div></div><ArrowRight className="text-zinc-600" /></CardContent></Card></Link>
+              <Card key={game.id} className="transition hover:border-zinc-600 hover:bg-zinc-900"><CardContent className="flex flex-wrap items-center gap-4 p-5"><Link to={`/host/games/${game.id}`} className="flex min-w-0 flex-1 items-center gap-4"><div className="grid size-14 shrink-0 place-items-center rounded-xl bg-zinc-800 font-mono font-black text-amber-300">{game.code}</div><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{game.title}</h2><div className="mt-2 flex flex-wrap gap-2"><Badge variant="secondary"><Users /> {game.playerCount}</Badge><Badge variant="secondary">{game.roundCount} rounds</Badge><Badge variant={game.status === "Finished" ? "success" : "default"}>{game.status}</Badge></div></div><ArrowRight className="text-zinc-600" /></Link><Button variant="outline" onClick={() => void duplicate(game)} disabled={duplicatingId !== null}><Copy /> {duplicatingId === game.id ? "Duplicating…" : "Duplicate"}</Button></CardContent></Card>
             ))}
           </div>
         </div>

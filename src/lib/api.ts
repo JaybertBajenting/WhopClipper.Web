@@ -57,6 +57,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ title }),
     }, hostKey),
+  duplicateGame: (hostKey: string, gameId: string, title?: string) =>
+    request<{ id: string; code: string; title: string; roundCount: number }>(`/api/host/games/${gameId}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify({ title: title || null }),
+    }, hostKey),
   hostGame: (hostKey: string, gameId: string) =>
     request<HostGame>(`/api/host/games/${gameId}`, {}, hostKey),
   uploadImage: (hostKey: string, file: File) => {
