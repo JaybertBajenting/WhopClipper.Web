@@ -127,6 +127,27 @@ The host dashboard remains available for contingencies: **Pause**, **Resume**, *
 
 Scoring is 100 / 75 / 50 / 25 points by correct-answer arrival order. Incorrect answers receive zero. Device clocks do not determine rank.
 
+### Automatic lifecycle reference
+
+| What participants see | Duration | What happens next |
+| --- | ---: | --- |
+| Lobby and QR code | Until the host starts | Round one opens |
+| Mystery workstation and choices | Per-round value, default 30 seconds | Answers close and the owner is revealed |
+| Owner, fun fact, points, and leaderboard | 8 seconds | The next configured round opens |
+| Final leaderboard | Until the meeting moves on | Game remains finished |
+
+The timing authority is the backend. Closing or refreshing the host, player, or projector tab does not stop the game. SignalR sends immediate updates and short polling provides a fallback.
+
+### Contingency controls
+
+- **Pause** freezes the current answer or reveal countdown and prevents new answers.
+- **Resume** restores the exact remaining time.
+- **Reveal now** closes the current answer window immediately and starts its reveal.
+- **Next round now** shortens the current reveal and opens the next round.
+- **End game** stops the sequence and displays the final leaderboard.
+
+Rounds can only be added or deleted while the game is still in the lobby. Create a new game if you need to rerun the activity with a different round order.
+
 ## 7. Secrets and recovery
 
 - Rotate the Supabase service-role key immediately if it is ever exposed.
@@ -146,3 +167,7 @@ Scoring is 100 / 75 / 50 / 25 points by correct-answer arrival order. Incorrect 
 **Database connection fails:** Use Supabase's session-pooler URI on port `5432`, replace the password placeholder, and URL-encode password characters.
 
 **The projector does not update instantly:** SignalR reconnects automatically and every game screen also polls every few seconds, so it should self-correct shortly.
+
+**The game does not advance:** Confirm the backend has been redeployed after the automation update, its `/health` endpoint is healthy, and App Platform is running exactly one backend instance. The backend—not the projector browser—runs the timers.
+
+**An older Supabase database reports a missing column:** Redeploy or restart the backend. Startup automatically applies the included `AutomateGameFlow` EF Core migration before accepting requests.

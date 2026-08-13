@@ -8,6 +8,16 @@ Responsive React 19, Vite, TypeScript, Tailwind CSS, and shadcn/ui frontend for 
 
 After the host clicks **Start Game**, the backend automatically closes each answer timer, shows the reveal, moves to the next round, and finishes on the final leaderboard. The host can still pause, resume, skip a phase, or end the game.
 
+| Route | Audience | Purpose |
+| --- | --- | --- |
+| `/` or `/join/:code` | Players | Enter a room code and display name |
+| `/play/:code` | Players | Answer, watch reveals, and see scores |
+| `/present/:code` | Shared screen | QR lobby, timed rounds, reveals, and final leaderboard |
+| `/host` | Organizer | Enter the backend host key |
+| `/host/games/:gameId` | Organizer | Configure rounds, start automation, and access contingency controls |
+
+Round editing is locked after **Start Game** so the running sequence remains deterministic. Each round uses its configured answer duration; each reveal lasts 8 seconds.
+
 The backend lives in the separate `BackendGame` repository. Supabase secrets are intentionally not used in this frontend.
 
 ## Local development
