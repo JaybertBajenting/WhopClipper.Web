@@ -1,4 +1,4 @@
-export type GameStatus = "Lobby" | "Live" | "Finished"
+export type GameStatus = "Lobby" | "Live" | "Paused" | "Finished"
 export type RoundStatus = "Pending" | "Open" | "Revealed"
 
 export interface LeaderboardEntry {
@@ -14,6 +14,8 @@ export interface PublicGameState {
     code: string
     title: string
     status: GameStatus
+    revealDurationSeconds: number
+    pausedAt: string | null
     playerCount: number
     roundCount: number
   }
@@ -28,6 +30,8 @@ export interface PublicGameState {
     status: RoundStatus
     durationSeconds: number
     openedAt: string | null
+    revealedAt: string | null
+    secondsRemaining: number
     isAcceptingAnswers: boolean
     imageUrl: string
     options: string[]
@@ -66,6 +70,8 @@ export interface HostGame {
   code: string
   title: string
   status: GameStatus
+  revealDurationSeconds: number
+  pausedAt: string | null
   createdAt: string
   players: Array<{ rank: number; id: string; displayName: string; totalScore: number; joinedAt: string }>
   rounds: Array<{

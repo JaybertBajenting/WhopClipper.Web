@@ -71,12 +71,16 @@ export const api = {
     }, hostKey),
   deleteRound: (hostKey: string, gameId: string, roundId: string) =>
     request<void>(`/api/host/games/${gameId}/rounds/${roundId}`, { method: "DELETE" }, hostKey),
-  openRound: (hostKey: string, gameId: string, roundId: string) =>
-    request<void>(`/api/host/games/${gameId}/rounds/${roundId}/open`, { method: "POST" }, hostKey),
-  revealRound: (hostKey: string, gameId: string, roundId: string) =>
-    request<void>(`/api/host/games/${gameId}/rounds/${roundId}/reveal`, { method: "POST" }, hostKey),
-  finishGame: (hostKey: string, gameId: string) =>
-    request<void>(`/api/host/games/${gameId}/finish`, { method: "POST" }, hostKey),
+  startGame: (hostKey: string, gameId: string) =>
+    request<void>(`/api/host/games/${gameId}/start`, { method: "POST" }, hostKey),
+  pauseGame: (hostKey: string, gameId: string) =>
+    request<void>(`/api/host/games/${gameId}/pause`, { method: "POST" }, hostKey),
+  resumeGame: (hostKey: string, gameId: string) =>
+    request<void>(`/api/host/games/${gameId}/resume`, { method: "POST" }, hostKey),
+  skipPhase: (hostKey: string, gameId: string) =>
+    request<void>(`/api/host/games/${gameId}/skip`, { method: "POST" }, hostKey),
+  endGame: (hostKey: string, gameId: string) =>
+    request<void>(`/api/host/games/${gameId}/end`, { method: "POST" }, hostKey),
 }
 
 export function apiAssetUrl(path: string) {
@@ -88,4 +92,3 @@ export function playerSessionKey(code: string) {
 }
 
 export const hostKeyStorage = "desk-detective-host-key"
-

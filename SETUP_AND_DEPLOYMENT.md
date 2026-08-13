@@ -100,9 +100,9 @@ Redeploy the backend after updating CORS. If you later add a custom domain, add 
 4. Add at least two answer choices per round, including the exact correct answer.
 5. Open the projector view in a separate browser window.
 6. Join from an incognito window using the QR code and a test name.
-7. Open a round, answer, reveal, and confirm the score appears.
+7. Click **Start Game**, answer the first round, and confirm it automatically reveals and advances.
 8. Refresh player and projector pages to confirm deep-link routing works.
-9. Finish the game and confirm the final leaderboard.
+9. Let the final round complete and confirm the final leaderboard appears automatically.
 
 ## 6. Meeting runbook
 
@@ -117,11 +117,13 @@ Before presenting:
 During the game:
 
 1. Show the projector lobby and let everyone join.
-2. From the host dashboard, open the next round.
-3. Wait for the timer or enough answers.
-4. Click **Reveal**.
-5. Give people a moment to react, then open the next round.
-6. After the final reveal, click **Finish game**.
+2. From the host dashboard, click **Start Game** once.
+3. The server closes each answer window at its configured time.
+4. The owner is revealed for 8 seconds.
+5. The next round starts automatically.
+6. After the final reveal, the final leaderboard appears automatically.
+
+The host dashboard remains available for contingencies: **Pause**, **Resume**, **Reveal now / Next round now**, and **End game**. Pausing freezes the exact remaining time.
 
 Scoring is 100 / 75 / 50 / 25 points by correct-answer arrival order. Incorrect answers receive zero. Device clocks do not determine rank.
 

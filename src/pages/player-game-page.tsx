@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CheckCircle2, CircleX, LoaderCircle, Radio, Trophy, Users } from "lucide-react"
+import { CheckCircle2, CircleX, LoaderCircle, Pause, Radio, Trophy, Users } from "lucide-react"
 import { Navigate, useParams } from "react-router-dom"
 import { AppShell } from "@/components/app-shell"
 import { Leaderboard } from "@/components/leaderboard"
@@ -48,7 +48,8 @@ export function PlayerGamePage() {
     }
   }, [refresh])
 
-  const remaining = useCountdown(state?.round?.openedAt, state?.round?.durationSeconds)
+  const answerCountdown = useCountdown(state?.round?.openedAt, state?.round?.durationSeconds)
+  const revealCountdown = useCountdown(state?.round?.revealedAt, state?.game.revealDurationSeconds)
 
   if (!session) return <Navigate to={`/join/${code}`} replace />
   if (!state) {
@@ -72,7 +73,9 @@ export function PlayerGamePage() {
   const round = state.round
   const isLobby = state.game.status === "Lobby" && !round
   const isFinished = state.game.status === "Finished"
+  const isPaused = state.game.status === "Paused"
   const isRevealed = round?.status === "Revealed" || isFinished
+  const remaining = isPaused ? (round?.secondsRemaining ?? 0) : round?.status === "Revealed" ? revealCountdown : answerCountdown
 
   return (
     <AppShell>
@@ -89,6 +92,7 @@ export function PlayerGamePage() {
         </div>
 
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">{error}</p>}
+        {isPaused && <p className="mb-4 flex items-center gap-2 rounded-xl border border-blue-400/20 bg-blue-400/10 px-4 py-3 text-sm text-blue-200"><Pause className="size-4" /> The host paused the game. Your remaining time is preserved at {remaining} seconds.</p>}
 
         {isLobby && (
           <Card className="overflow-hidden text-center">
@@ -117,7 +121,7 @@ export function PlayerGamePage() {
               <CardContent className="space-y-5 pt-6">
                 {round.status === "Open" && <Timer remaining={remaining} duration={round.durationSeconds} />}
 
-                {round.status === "Open" && !round.ownAnswer && round.isAcceptingAnswers && remaining > 0 && (
+                {round.status === "Open" && !isPaused && !round.ownAnswer && round.isAcceptingAnswers && remaining > 0 && (
                   <div>
                     <h2 className="mb-4 text-center text-xl font-bold">Whose workstation is this?</h2>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -130,7 +134,7 @@ export function PlayerGamePage() {
                   <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-6 text-center"><CheckCircle2 className="mx-auto mb-3 size-9 text-amber-300" /><h2 className="text-xl font-bold">Answer locked in</h2><p className="mt-2 text-zinc-400">You chose <strong className="text-zinc-200">{round.ownAnswer.guess}</strong>. Waiting for the reveal…</p></div>
                 )}
 
-                {round.status === "Open" && (!round.isAcceptingAnswers || remaining === 0) && !round.ownAnswer && (
+                {round.status === "Open" && !isPaused && (!round.isAcceptingAnswers || remaining === 0) && !round.ownAnswer && (
                   <div className="rounded-2xl border border-zinc-700 bg-zinc-800/50 p-6 text-center"><CircleX className="mx-auto mb-3 size-9 text-zinc-500" /><h2 className="text-xl font-bold">Time’s up</h2><p className="mt-2 text-zinc-400">Waiting for the host to reveal the answer.</p></div>
                 )}
 
@@ -140,6 +144,7 @@ export function PlayerGamePage() {
                     <h2 className="mt-2 text-4xl font-black">{round.correctAnswer}</h2>
                     {round.funFact && <p className="mx-auto mt-3 max-w-xl text-zinc-400">{round.funFact}</p>}
                     {round.ownAnswer && <p className="mt-5 font-semibold">{round.ownAnswer.isCorrect ? `Correct! +${round.ownAnswer.scoreAwarded} points` : `You guessed ${round.ownAnswer.guess}`}</p>}
+                    {!isFinished && <p className="mt-3 text-sm text-zinc-500">{isPaused ? "Reveal paused" : `Next round in ${remaining}s`}</p>}
                   </div>
                 )}
               </CardContent>

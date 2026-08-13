@@ -3,8 +3,10 @@
 Responsive React 19, Vite, TypeScript, Tailwind CSS, and shadcn/ui frontend for the workstation guessing game. It supports laptops and phones and includes three experiences:
 
 - Player: join with room code and display name, submit one guess, see reveals and scores.
-- Host: create a game, upload workstation images, configure choices, control rounds, and finish the game.
+- Host: create a game, upload workstation images, configure choices, start the automatic sequence, and use emergency controls when needed.
 - Projector: show the QR code, workstation, timer, reveal, and leaderboard on the meeting screen.
+
+After the host clicks **Start Game**, the backend automatically closes each answer timer, shows the reveal, moves to the next round, and finishes on the final leaderboard. The host can still pause, resume, skip a phase, or end the game.
 
 The backend lives in the separate `BackendGame` repository. Supabase secrets are intentionally not used in this frontend.
 
