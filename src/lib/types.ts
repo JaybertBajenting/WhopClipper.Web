@@ -1,92 +1,381 @@
-export type GameStatus = "Lobby" | "Live" | "Paused" | "Finished"
-export type RoundStatus = "Pending" | "Open" | "Revealed"
+export type CampaignStatus = "Draft" | "Ready" | "Processing" | "NeedsReview" | "Completed" | "Archived"
+export type JobStatus = "Queued" | "Running" | "Completed" | "Failed" | "Cancelled"
+export type Platform = "TikTok" | "InstagramReels" | "YouTubeShorts" | "X"
+export type AiMode = "Claude" | "Codex" | "Auto" | "Compare"
+export type RequirementOrigin = "Extracted" | "Default" | "UserOverride"
 
-export interface LeaderboardEntry {
+export interface CampaignSummary {
+  id: string
+  name: string
+  status: CampaignStatus
+  brand?: string | null
+  category?: string | null
+  campaignType?: "Clipping" | "UGC" | string | null
+  whopUrl?: string | null
+  deadline?: string | null
+  /** Human-readable payout label derived from the structured fields, e.g. "$1 per 1,000 views". */
+  payout?: string | null
+  payoutAmount?: number | null
+  /** View count the payout applies to. Null when the reward is not view-based. */
+  payoutPerViews?: number | null
+  payoutUnit?: string | null
+  platformCount?: number
+  sourceCount?: number
+  updatedAt: string
+  createdAt?: string
+}
+
+export interface RequirementItem {
+  id?: string
+  key: string
+  label: string
+  value: string
+  category: "Format" | "Publishing" | "Brand" | "Content" | "Account" | "Reward" | "Safety" | string
+  sourceText?: string | null
+  confidence?: number | null
+  origin?: RequirementOrigin
+  needsReview?: boolean
+}
+
+export interface RequirementRevision {
+  id: string
+  version: number
+  status?: "Draft" | "Approved" | "Superseded" | string
+  approvedAt?: string | null
+  createdAt: string
+  items: RequirementItem[]
+}
+
+export interface PlatformProfile {
+  id?: string
+  platform: Platform
+  enabled: boolean
+  width: number
+  height: number
+  aspectRatio: string
+  minDurationSeconds: number
+  preferredDurationSeconds: number
+  maxDurationSeconds: number
+  maxFileSizeMb?: number | null
+  captionTemplate: string
+  hashtags: string[]
+  mentions: string[]
+  disclosure?: string | null
+  cta?: string | null
+  subtitleStyle?: string | null
+  burnSubtitles?: boolean
+  safeAreaNotes?: string | null
+  brandingNotes?: string | null
+  notes?: string | null
+  origin?: RequirementOrigin
+  complianceChecklist?: string[]
+  valueOrigins?: Record<string, string>
+}
+
+export interface SourceAsset {
+  id: string
+  url?: string | null
+  title: string
+  kind?: "Remote" | "Local" | string
+  status?: "Pending" | "Inspected" | "Downloading" | "Downloaded" | "Failed" | string
+  durationSeconds?: number | null
+  uploader?: string | null
+  thumbnailUrl?: string | null
+  localPath?: string | null
+  subtitleRelativePath?: string | null
+  format?: string | null
+  fileSizeBytes?: number | null
+  hasTranscript?: boolean
+  isLocalFile?: boolean
+  createdAt?: string
+}
+
+export type CampaignDocumentKind = "Pdf" | "Word" | "Text" | "Markdown"
+export type DocumentExtractionStatus = "Pending" | "Extracted" | "Failed"
+export type ReferenceVideoStatus = "Pending" | "Analyzing" | "Analyzed" | "Failed"
+
+export interface CampaignDocument {
+  id: string
+  fileName: string
+  kind: CampaignDocumentKind
+  sizeBytes: number
+  pageCount?: number | null
+  extractedCharacterCount: number
+  extractionStatus: DocumentExtractionStatus
+  extractionError?: string | null
+  includeInExtraction: boolean
+  relativePath: string
+  uploadedAt: string
+}
+
+/** The client logo burned into every clip. Sizes are fractions of the output frame. */
+export interface CampaignBranding {
+  logoRelativePath?: string | null
+  logoFileName?: string | null
+  logoCropRect?: string | null
+  position: "Top" | "Center" | "Bottom"
+  widthFraction: number
+  marginFraction: number
+  opacity: number
+  enabled: boolean
+}
+
+export interface ReferenceStyleProfile {
+  schemaVersion: string
+  durationSeconds: number
+  width: number
+  height: number
+  aspectRatio: string
+  orientation: string
+  frameRate: number
+  hasAudio: boolean
+  pacing: "VeryFast" | "Fast" | "Medium" | "Slow" | string
+  shots: {
+    cutCount: number
+    cutsPerMinute: number
+    averageShotSeconds: number
+    medianShotSeconds: number
+    shortestShotSeconds: number
+    longestShotSeconds: number
+    openingShotSeconds: number
+  }
+  loudness: { integratedLufs?: number | null; loudnessRangeLu?: number | null; truePeakDb?: number | null }
+  spokenWordsPerMinute?: number | null
+  cutTimestamps: number[]
+  summary: string[]
+  derivedAt: string
+}
+
+export interface ReferenceVideo {
+  id: string
+  label: string
+  url?: string | null
+  localRelativePath?: string | null
+  notes?: string | null
+  isPrimary: boolean
+  durationSeconds?: number | null
+  status: ReferenceVideoStatus
+  error?: string | null
+  styleProfile?: ReferenceStyleProfile | null
+  createdAt: string
+  analyzedAt?: string | null
+}
+
+export type DetectedLinkKind = "Media" | "Admin" | "Other"
+
+/** A URL found in the campaign brief that can be accepted as a source or a reference. */
+export interface DetectedLink {
+  url: string
+  host: string
+  kind: DetectedLinkKind
+  context: string
+  occurrences: number
+  alreadySource: boolean
+  alreadyReference: boolean
+}
+
+/** A finished render sitting in the campaign's output folder. */
+export interface RenderedClip {
+  relativePath: string
+  fileName: string
+  platform: string
+  sizeBytes: number
+  createdAt: string
+  editPlanId?: string | null
+  startSeconds?: number | null
+  endSeconds?: number | null
+}
+
+export interface CampaignDetail extends CampaignSummary {
+  rawInstructions: string
+  notes?: string | null
+  requirements: RequirementRevision[]
+  platformProfiles: PlatformProfile[]
+  sources: SourceAsset[]
+  documents: CampaignDocument[]
+  referenceVideos: ReferenceVideo[]
+  branding?: CampaignBranding | null
+  selectedAiMode?: AiMode
+  latestAnalysis?: AiAnalysis | null
+  editPlans?: EditPlan[]
+}
+
+export interface DashboardSummary {
+  campaignCounts: Partial<Record<CampaignStatus, number>>
+  activeJobs: number
+  failedJobs: number
+  needsReview: number
+  storageUsedBytes: number
+  recentCampaigns: CampaignSummary[]
+  recentJobs: Job[]
+}
+
+export interface Job {
+  id: string
+  campaignId?: string | null
+  campaignName?: string | null
+  type: "Download" | "Metadata" | "Transcription" | "AiAnalysis" | "Render" | "Validation" | "Export" | string
+  status: JobStatus
+  progress: number
+  message?: string | null
+  errorSummary?: string | null
+  createdAt: string
+  startedAt?: string | null
+  completedAt?: string | null
+  outputPath?: string | null
+  provider?: string | null
+  resultJson?: string | null
+}
+
+export interface HighlightCandidate {
+  id: string
   rank: number
-  playerId: string
-  displayName: string
-  totalScore: number
-}
-
-export interface PublicGameState {
-  game: {
-    id: string
-    code: string
-    title: string
-    status: GameStatus
-    revealDurationSeconds: number
-    pausedAt: string | null
-    playerCount: number
-    roundCount: number
-  }
-  player: null | {
-    id: string
-    displayName: string
-    totalScore: number
-  }
-  round: null | {
-    id: string
-    position: number
-    status: RoundStatus
-    durationSeconds: number
-    openedAt: string | null
-    revealedAt: string | null
-    secondsRemaining: number
-    isAcceptingAnswers: boolean
-    imageUrl: string
-    options: string[]
-    correctAnswer: string | null
-    funFact: string | null
-    answerCount: number
-    ownAnswer: null | {
-      guess: string
-      isCorrect: boolean | null
-      scoreAwarded: number | null
-      correctRank: number | null
-    }
-  }
-  leaderboard: LeaderboardEntry[]
-}
-
-export interface PlayerSession {
-  playerId: string
-  playerToken: string
-  gameCode: string
-  displayName: string
-}
-
-export interface HostGameSummary {
-  id: string
-  code: string
   title: string
-  status: GameStatus
-  createdAt: string
-  playerCount: number
-  roundCount: number
+  startSeconds: number
+  endSeconds: number
+  hook: string
+  rationale: string
+  confidence: number
+  campaignFit: number
+  retentionPotential: number
+  clarity?: number
+  emotionalImpact?: number
+  provider: "Claude" | "Codex" | string
+  platform?: Platform
+  uncertainties?: string[]
+  editRecommendation?: {
+    width?: number
+    height?: number
+    framesPerSecond?: number
+    framing?: string
+    burnSubtitles?: boolean
+    subtitleStyle?: string
+    subtitleRelativePath?: string | null
+    musicAssetId?: string | null
+    musicVolume?: number
+    musicDuckingDb?: number
+    overlayText?: string
+    soundEffects?: Array<{ assetId: string; atSeconds: number; gainDb: number }>
+  }
 }
 
-export interface HostGame {
+export interface AiAnalysis {
   id: string
-  code: string
-  title: string
-  status: GameStatus
-  revealDurationSeconds: number
-  pausedAt: string | null
+  status: JobStatus
+  mode: AiMode
   createdAt: string
-  players: Array<{ rank: number; id: string; displayName: string; totalScore: number; joinedAt: string }>
-  rounds: Array<{
-    id: string
-    position: number
-    correctAnswer: string
-    funFact: string | null
-    imagePath: string | null
-    externalImageUrl: string | null
-    durationSeconds: number
-    status: RoundStatus
-    openedAt: string | null
-    revealedAt: string | null
-    options: string[]
-    answerCount: number
-    correctCount: number
+  sourceAssetId: string
+  platform?: Platform
+  sharedContextSummary?: string | null
+  candidates: HighlightCandidate[]
+  providerRuns?: Array<{
+    provider: string
+    status: JobStatus
+    model?: string | null
+    durationMs?: number | null
+    candidateCount?: number
+    error?: string | null
   }>
+}
+
+export interface EditPlan {
+  id: string
+  name: string
+  campaignId: string
+  sourceAssetId: string
+  platform: Platform
+  highlightCandidateId?: string | null
+  startSeconds: number
+  endSeconds: number
+  width: number
+  height: number
+  fps: number
+  framing: "SmartCrop" | "CenterCrop" | "BlurredBackground" | "Letterbox" | string
+  subtitleEnabled: boolean
+  subtitleStyle: string
+  subtitleRelativePath?: string | null
+  musicAssetId?: string | null
+  musicVolume: number
+  normalizeAudio: boolean
+  musicDuckingDb: number
+  soundEffects?: Array<{ assetId: string; atSeconds: number; gainDb: number }>
+  overlays?: Array<{ type: string; text: string; atSeconds: number; endSeconds?: number; position?: string; fontSize?: number; color?: string }>
+  status?: "Draft" | "Approved" | "Rendered" | string
+  ffmpegPreview?: string | null
+}
+
+export interface MediaLocation {
+  id: string
+  path: string
+  type: "Music" | "SoundEffect" | "Mixed" | string
+  assetCount?: number
+  lastScannedAt?: string | null
+}
+
+export interface MediaAsset {
+  id: string
+  locationId?: string
+  name: string
+  path: string
+  type: "Music" | "SoundEffect" | string
+  durationSeconds?: number | null
+  mood?: string | null
+  energy?: string | null
+  genre?: string | null
+  bpm?: number | null
+  tags: string[]
+  favorite: boolean
+  licenseNotes?: string | null
+  hash?: string | null
+  sizeBytes?: number | null
+}
+
+export interface SystemDependency {
+  name: "PostgreSQL" | "yt-dlp" | "FFmpeg" | "FFprobe" | "Claude CLI" | "Codex CLI" | string
+  available: boolean
+  version?: string | null
+  path?: string | null
+  detail?: string | null
+}
+
+export interface AiProviderStatus {
+  provider: "Claude" | "Codex" | string
+  available: boolean
+  authenticated?: boolean
+  version?: string | null
+  model?: string | null
+  detail?: string | null
+}
+
+export interface AppSettings {
+  workspacePath: string
+  databaseConnection?: string | null
+  ytDlpPath: string
+  ffmpegPath: string
+  ffprobePath: string
+  claudePath: string
+  codexPath: string
+  defaultAiMode: AiMode
+  aiTimeoutMinutes: number
+  maxConcurrentMediaJobs: number
+  requireEditApproval: boolean
+  preferredVideoQuality: string
+  cookiesFromBrowser?: string | null
+  cookiesFilePath?: string | null
+  jsRuntime?: string | null
+}
+
+export interface ValidationResult {
+  id?: string
+  renderId?: string
+  readyToUpload: boolean
+  checks: Array<{
+    id: string
+    label: string
+    group: "Technical" | "Campaign" | "Publishing" | string
+    status: "Passed" | "NeedsReview" | "Failed"
+    detail?: string | null
+  }>
+  outputPath?: string | null
+  publishingText?: string | null
 }

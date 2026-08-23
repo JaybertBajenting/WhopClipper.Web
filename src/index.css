@@ -1,40 +1,209 @@
+@import "@fontsource-variable/inter";
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Inter Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: "Inter Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --color-ink: #17231f;
+  --color-canvas: #f4f6f3;
+  --color-panel: #ffffff;
+  --color-brand: #36d899;
+  --color-brand-dark: #0d8059;
+  --color-sidebar: #14231f;
 }
 
+/*
+ * Semantic surface, text, and border tokens. Components reference these instead of
+ * literal hex values, so the dark palette below is the only place that has to change.
+ */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+
+  --fg-strong: #17231f;
+  --fg-body: #5e6c65;
+  /* Nudged darker than the original #7b8881/#98a39d: at 3.4:1 and 2.4:1 on the canvas
+     they failed WCAG AA for secondary text. The hierarchy against --fg-body is kept. */
+  --fg-muted: #6b7871;
+  --fg-subtle: #7d8a83;
+  --on-brand: #09251b;
+
+  --brand-text: #0d8059;
+  --brand-text-soft: #b5d5c8;
+  --brand-strong: #14815b;
+  --brand-hover: #52e2aa;
+
+  --warning-text: #8a6411;
+  --warning-solid: #dc9b49;
+  --danger-text: #b33d3d;
+  --danger-text-soft: #e45858;
+  --danger-solid: #d94f4f;
+  --danger-solid-hover: #c44343;
+  --info-text: #5e61a8;
+
+  --surface-raised: #fafcfa;
+  --surface-subtle: #f4f7f5;
+  --surface-muted: #e7ece9;
+  --surface-neutral-strong: #cbd4cf;
+  --surface-accent: #e4f7ef;
+  --surface-accent-subtle: #eff8f4;
+  --surface-warning: #fff4d8;
+  --surface-warning-subtle: #fff9e7;
+  --surface-danger: #ffeded;
+  --surface-danger-subtle: #fff0f0;
+  --surface-info: #edf0ff;
+  --surface-inverse: #14231f;
+  --surface-inverse-raised: #263b34;
+
+  --border-default: #e0e6e2;
+  --border-strong: #d2dbd6;
+  --border-accent: #b7e6d2;
+  --border-warning: #ead697;
+  --border-danger: #efb4b4;
+  --border-inverse: #31443e;
+
+  --scrim: #08140f;
+  --page-glow: rgb(54 216 153 / 0.08);
+  --scroll-thumb: #c7d0ca;
+
   font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Tailwind emits var(--color-*) for theme utilities, so overriding them here
+     re-themes bg-canvas, bg-panel, text-ink, text-brand-dark, and bg-sidebar. */
+  --color-ink: #e9efec;
+  --color-canvas: #0e1512;
+  --color-panel: #151d19;
+  --color-sidebar: #0b120f;
+  --color-brand-dark: #45e0a5;
+
+  --fg-strong: #e9efec;
+  --fg-body: #b6c3bc;
+  --fg-muted: #91a29a;
+  --fg-subtle: #74847d;
+  /* The mint brand colour is unchanged in dark mode, so text on it stays dark. */
+  --on-brand: #09251b;
+
+  --brand-text: #45e0a5;
+  --brand-text-soft: #7fc4a9;
+  --brand-strong: #36d899;
+  --brand-hover: #52e2aa;
+
+  --warning-text: #e8c074;
+  --warning-solid: #dc9b49;
+  --danger-text: #f09292;
+  --danger-text-soft: #f0a5a5;
+  --danger-solid: #d94f4f;
+  --danger-solid-hover: #c44343;
+  --info-text: #a7aaee;
+
+  --surface-raised: #1b2420;
+  --surface-subtle: #172019;
+  --surface-muted: #212b26;
+  --surface-neutral-strong: #2d3a33;
+  --surface-accent: #16352a;
+  --surface-accent-subtle: #122a21;
+  --surface-warning: #33280f;
+  --surface-warning-subtle: #29200f;
+  --surface-danger: #351a1a;
+  --surface-danger-subtle: #2b1516;
+  --surface-info: #1d2040;
+  --surface-inverse: #080d0b;
+  --surface-inverse-raised: #1e2c27;
+
+  --border-default: #263029;
+  --border-strong: #35423b;
+  --border-accent: #1f5c45;
+  --border-warning: #6a5320;
+  --border-danger: #6b3535;
+  --border-inverse: #2a3a34;
+
+  --scrim: #000000;
+  --page-glow: rgb(54 216 153 / 0.06);
+  --scroll-thumb: #33413a;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--scroll-thumb) transparent;
+  scrollbar-width: thin;
 }
 
 html {
   min-width: 320px;
-  background: #09090b;
+  min-height: 100%;
+  background: var(--color-canvas);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #09090b;
+  background:
+    radial-gradient(circle at 95% 0%, var(--page-glow), transparent 22rem),
+    var(--color-canvas);
+  color: var(--color-ink);
+}
+
+/* Colour changes should be instant on load but smooth when the user flips the theme. */
+html.theme-transition,
+html.theme-transition * {
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
-::selection {
-  background: rgb(251 191 36 / 0.3);
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
 }
 
+::selection {
+  background: rgb(54 216 153 / 0.28);
+}
+
+@keyframes enter-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.animate-enter {
+  animation: enter-up 260ms ease-out both;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  html.theme-transition,
+  html.theme-transition * {
+    transition: none !important;
+  }
+}

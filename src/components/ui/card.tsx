@@ -2,7 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-2xl border border-zinc-800 bg-zinc-900/80 text-zinc-100 shadow-xl shadow-black/10", className)} {...props} />
+  return <div className={cn("rounded-2xl border border-[var(--border-default)] bg-panel text-ink shadow-[0_1px_2px_rgb(17_37_30/0.03),0_8px_32px_rgb(17_37_30/0.04)]", className)} {...props} />
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -10,11 +10,11 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn("text-xl font-semibold tracking-tight", className)} {...props} />
+  return <h3 className={cn("text-lg font-semibold tracking-[-0.02em]", className)} {...props} />
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-sm leading-relaxed text-zinc-400", className)} {...props} />
+  return <p className={cn("text-sm leading-relaxed text-[var(--fg-body)]", className)} {...props} />
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -24,4 +24,3 @@ export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDi
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex items-center p-6 pt-0", className)} {...props} />
 }
-

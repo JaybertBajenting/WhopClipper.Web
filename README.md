@@ -1,74 +1,78 @@
-# Desk Detective
+# ClipForge Local — frontend
 
-Responsive React 19, Vite, TypeScript, Tailwind CSS, and shadcn/ui frontend for the workstation guessing game. It supports laptops and phones and includes three experiences:
+React 19 interface for the locally hosted Whop clipping assistant. It turns a campaign brief into reviewed requirements, platform profiles, source downloads, AI-selected highlights, typed edit plans, FFmpeg jobs, validation results, and a manual publishing package.
 
-- Player: join with room code and display name, submit one guess, see reveals and scores.
-- Host: create a game, upload workstation images, configure choices, start the automatic sequence, and use emergency controls when needed.
-- Projector: show the QR code, workstation, timer, reveal, and leaderboard on the meeting screen.
+The frontend never runs `yt-dlp`, FFmpeg, Claude CLI, or Codex CLI itself. It sends typed requests to the loopback ASP.NET API, which owns subprocess and filesystem access.
 
-After the host clicks **Start Game**, the backend automatically closes each answer timer, shows the reveal, moves to the next round, and finishes on the final leaderboard. The host can still pause, resume, skip a phase, or end the game.
+## Product routes
 
-| Route | Audience | Purpose |
-| --- | --- | --- |
-| `/` or `/join/:code` | Players | Enter a room code and display name |
-| `/play/:code` | Players | Answer, watch reveals, and see scores |
-| `/present/:code` | Shared screen | QR lobby, timed rounds, reveals, and final leaderboard |
-| `/host` | Organizer | Enter the backend host key |
-| `/host/games/:gameId` | Organizer | Configure rounds, start automation, and access contingency controls |
+| Route | Purpose |
+|---|---|
+| `/` | Dashboard and recent work |
+| `/campaigns` | Search, create, duplicate, and archive campaigns |
+| `/campaigns/:campaignId` | Requirements, profiles, sources, AI analysis, edit plan, and export workflow |
+| `/library` | Approved local music and sound-effect manifest |
+| `/jobs` | Polling progress, failure details, cancellation, and retry |
+| `/settings` | Workspace paths, executable paths, AI defaults, and dependency checks |
 
-Round editing is locked after **Start Game** so the running sequence remains deterministic. Each round uses its configured answer duration; each reveal lasts 8 seconds.
+Campaign joining, social publishing, and Whop submission remain manual.
 
-The backend lives in the separate `BackendGame` repository. Supabase secrets are intentionally not used in this frontend.
+## Stack
+
+- React 19, TypeScript, and Vite
+- TanStack Router and TanStack Query
+- React Hook Form with Zod
+- Axios and Zustand
+- Tailwind CSS with locally owned shadcn/ui-style Radix components
+- Vitest and Testing Library
+
+Dependency versions are pinned to the supplied frontend dependency workbook.
 
 ## Local development
 
-Requirements: Node.js 22 or newer and a running backend.
+Requirements: Node.js, pnpm, and the local ASP.NET API.
 
 ```powershell
 Copy-Item .env.example .env.local
-corepack enable
 pnpm install
-pnpm run dev
+pnpm dev
 ```
 
-Set the backend URL in `.env.local`:
+The development server listens on `http://localhost:5173`. The default API endpoint is `http://localhost:5080/api` and can be changed in `.env.local`:
 
 ```text
-VITE_API_URL=http://localhost:5087
+VITE_API_BASE_URL=http://localhost:5080/api
 ```
 
-Then open `http://localhost:5173`.
+## ASP.NET desktop build
 
-## Commands
+The packaged Windows app serves the compiled SPA and API from the same ASP.NET origin. Build with a relative API URL before copying `dist` into the backend `wwwroot`:
 
 ```powershell
-pnpm run dev
-pnpm run typecheck
-pnpm run lint
-pnpm run build
-pnpm run preview
+$env:VITE_API_BASE_URL="/api"
+pnpm build
 ```
 
-## shadcn/ui
+TanStack Router uses history routing, so the ASP.NET host must fall back non-API requests to `index.html`. The backend project provides this fallback.
 
-The repository includes `components.json` and local shadcn-style components under `src/components/ui`. Add another component with the shadcn CLI when needed:
+## Verification
 
 ```powershell
-pnpm dlx shadcn@latest add dialog
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
 ```
 
-Generated components remain in the repository and can be customized like normal React source code.
+`pnpm test -- --coverage` generates the optional coverage report.
 
-## DigitalOcean App Platform
+## Runtime behavior
 
-1. Deploy the backend first and copy its public HTTPS URL.
-2. Create another App Platform component from this repository and choose **Static Site**.
-3. Build command: `corepack enable && pnpm install --frozen-lockfile && pnpm run build`
-4. Output directory: `dist`
-5. Add build-time variable `VITE_API_URL=https://YOUR-BACKEND.ondigitalocean.app`.
-6. Set the static site's catch-all document to `index.html` so `/play`, `/present`, and `/host` routes work when refreshed.
-7. Deploy, then add the frontend's final HTTPS URL to the backend variable `Game__AllowedOrigins` and redeploy the backend.
-
-The frontend needs no Supabase URL, anon key, database password, or service-role key. All database and Storage work happens behind the ASP.NET API.
-
-See [SETUP_AND_DEPLOYMENT.md](SETUP_AND_DEPLOYMENT.md) for the complete first-time checklist and meeting runbook.
+- API loading, empty, and error states are explicit.
+- Jobs poll while work is active and can be cancelled or retried.
+- Source inspection is asynchronous and persists the source when queued.
+- AI analysis uses downloaded captions when available and offers a manual transcript/SRT fallback.
+- Claude/Codex output is schema-mapped into editable highlight and edit-plan controls; the latest run is restored after refresh.
+- Render requests use approved typed plans; raw shell commands are never accepted from the browser.
+- Technical validation is queued after a completed render. Publishing copy and compliance checks stay visible for manual review.
+- The API base URL can be absolute during development or relative inside the desktop WebView.
