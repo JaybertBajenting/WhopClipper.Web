@@ -299,7 +299,15 @@ export interface EditPlan {
   normalizeAudio: boolean
   musicDuckingDb: number
   soundEffects?: Array<{ assetId: string; atSeconds: number; gainDb: number }>
-  overlays?: Array<{ type: string; text: string; atSeconds: number; endSeconds?: number; position?: string; fontSize?: number; color?: string }>
+  /** Handle burned along the bottom for the whole clip. Kept apart from `overlays` so a hook
+   * added at the front cannot be mistaken for the CTA. */
+  ctaText?: string | null
+  /**
+   * `style` picks stroked text ("Outline") or the white caption card ("Card").
+   * `yFraction` pins the top edge at a fraction of frame height, overriding `position` - a clip
+   * composited with a facecam across the top has no usable named edge for the hook.
+   */
+  overlays?: Array<{ type: string; text: string; atSeconds: number; endSeconds?: number; position?: string; fontSize?: number; color?: string; style?: "Outline" | "Card"; yFraction?: number | null }>
   status?: "Draft" | "Approved" | "Rendered" | string
   ffmpegPreview?: string | null
 }
