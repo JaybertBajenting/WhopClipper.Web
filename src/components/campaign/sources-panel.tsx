@@ -50,7 +50,7 @@ export function SourcesPanel({ campaign }: { campaign: CampaignDetail }) {
   const inspect = useMutation({ mutationFn: (values: SourceValues) => api.inspectSource(campaign.id, values.url), onSuccess: () => { toast.success("Source added; metadata inspection queued"); form.reset(); queryClient.invalidateQueries({ queryKey: ["campaign", campaign.id] }); queryClient.invalidateQueries({ queryKey: ["jobs"] }) }, onError: (error) => toast.error(getErrorMessage(error)) })
   return (
     <div className="space-y-5">
-      <Alert tone="warning"><span className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0" /><span>Only download source media supplied or approved for this campaign. ClipForge does not bypass access controls, DRM, or paywalls.</span></span></Alert>
+      <Alert tone="warning"><span className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0" /><span>Only download source media supplied or approved for this campaign. Whop Clipper does not bypass access controls, DRM, or paywalls.</span></span></Alert>
       <DetectedLinksCard campaignId={campaign.id} target="source" />
 
       <LocalSourcesCard campaignId={campaign.id} />

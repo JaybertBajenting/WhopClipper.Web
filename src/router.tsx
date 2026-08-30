@@ -6,6 +6,7 @@ import { CampaignWorkspacePage } from "@/pages/campaign-workspace-page"
 import { DashboardPage } from "@/pages/dashboard-page"
 import { JobsPage } from "@/pages/jobs-page"
 import { SettingsPage } from "@/pages/settings-page"
+import { PublishingPage } from "@/pages/publishing-page"
 import { Button } from "@/components/ui/button"
 
 function RootLayout() {
@@ -22,9 +23,10 @@ const campaignsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/ca
 const campaignRoute = createRoute({ getParentRoute: () => rootRoute, path: "/campaigns/$campaignId", component: () => { const { campaignId } = campaignRoute.useParams(); return <CampaignWorkspacePage campaignId={campaignId} /> } })
 const libraryRoute = createRoute({ getParentRoute: () => rootRoute, path: "/library", component: AudioLibraryPage })
 const jobsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/jobs", component: JobsPage })
+const publishingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/publishing", component: PublishingPage })
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage })
 
-const routeTree = rootRoute.addChildren([dashboardRoute, campaignsRoute, campaignRoute, libraryRoute, jobsRoute, settingsRoute])
+const routeTree = rootRoute.addChildren([dashboardRoute, campaignsRoute, campaignRoute, libraryRoute, jobsRoute, publishingRoute, settingsRoute])
 
 export const router = createRouter({ routeTree, defaultPreload: "intent", scrollRestoration: true })
 

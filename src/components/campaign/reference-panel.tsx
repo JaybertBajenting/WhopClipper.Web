@@ -141,7 +141,7 @@ export function ReferencePanel({ campaign }: { campaign: CampaignDetail }) {
       <Alert>
         <span className="flex gap-2">
           <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-          <span>ClipForge measures a reference locally with FFmpeg — cut rhythm, shot lengths, orientation, and loudness — and sends only those numbers to Claude or Codex. The video file itself never leaves this machine.</span>
+              <span>Whop Clipper measures a reference locally with FFmpeg — cut rhythm, shot lengths, orientation, and loudness — and sends only those numbers to Claude or Codex. The video file itself never leaves this machine.</span>
         </span>
       </Alert>
 

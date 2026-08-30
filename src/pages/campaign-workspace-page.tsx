@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate } from "@tanstack/react-router"
-import { Archive, ArrowLeft, BrainCircuit, Clapperboard, ExternalLink, FileCheck2, FileText, Film, MonitorSmartphone, Pencil, RotateCcw, Scissors, Sparkles, Trash2 } from "lucide-react"
+import { Archive, ArrowLeft, BrainCircuit, Clapperboard, ExternalLink, FileCheck2, FileText, Film, MonitorSmartphone, Pencil, RotateCcw, Scissors, Send, Sparkles, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { api, getErrorMessage } from "@/lib/api"
 import type { HighlightCandidate } from "@/lib/types"
@@ -15,6 +15,7 @@ import { ReferencePanel } from "@/components/campaign/reference-panel"
 import { RequirementsPanel } from "@/components/campaign/requirements-panel"
 import { ReviewPanel } from "@/components/campaign/review-panel"
 import { SourcesPanel } from "@/components/campaign/sources-panel"
+import { CampaignPublishingPanel } from "@/components/campaign/campaign-publishing-panel"
 import { CampaignStatusBadge } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -29,6 +30,7 @@ const stages = [
   { id: "analysis", label: "AI highlights", icon: BrainCircuit },
   { id: "edit", label: "Edit plan", icon: Scissors },
   { id: "review", label: "Review & export", icon: FileCheck2 },
+  { id: "publish", label: "Publish", icon: Send },
 ] as const
 
 export function CampaignWorkspacePage({ campaignId }: { campaignId: string }) {
@@ -71,6 +73,7 @@ export function CampaignWorkspacePage({ campaignId }: { campaignId: string }) {
         <TabsContent value="analysis"><AiAnalysisPanel campaign={data} selectedCandidateId={candidate?.id} onSelectCandidate={(next) => { setCandidate(next); toast.success("Highlight selected for edit plan") }} onContinue={() => setTab("edit")} /></TabsContent>
         <TabsContent value="edit"><EditPlanPanel key={candidate?.id ?? "manual"} campaign={data} candidate={candidate} /></TabsContent>
         <TabsContent value="review"><ReviewPanel campaign={data} /></TabsContent>
+        <TabsContent value="publish"><CampaignPublishingPanel campaign={data} /></TabsContent>
       </Tabs>
     </div>
   )

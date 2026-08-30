@@ -2,8 +2,9 @@ import axios, { AxiosError } from "axios"
 import { formatPayout } from "@/lib/utils"
 import type {
   AiAnalysis, AiMode, AiProviderStatus, AppSettings, CampaignBranding, CampaignDetail, CampaignDocument, CampaignStatus, CampaignSummary,
-  DashboardSummary, EditPlan, Job, JobStatus, MediaAsset, MediaLocation, Platform, PlatformProfile, ReferenceVideo,
-  RequirementItem, RequirementRevision, SourceAsset, SystemDependency,
+  AccountKit, CreatePublishJobInput, DashboardSummary, EditPlan, Job, JobStatus, MediaAsset, MediaLocation, Platform, PlatformGuide,
+  PlatformProfile, PublishingConnectionInput, PublishingConnectionStatus, PublishingPlatform, PublishingSession, PublishJob, PublishStatus, ReferenceVideo,
+  RequirementItem, RequirementRevision, SourceAsset, SystemDependency, YouTubeOAuthStart,
 } from "@/lib/types"
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5080/api"
@@ -30,11 +31,27 @@ http.interceptors.response.use((response) => response, (error: AxiosError<{ titl
   const body = error.response?.data
   const validation = body?.errors ? Object.values(body.errors).flat().join(" ") : undefined
   const offline = !error.response && error.code !== "ECONNABORTED"
-  const message = offline ? "The local API is not reachable. Start ClipForge or the .NET backend and try again." : validation || body?.detail || body?.message || body?.error || body?.title || error.message
+  const message = offline ? "The local API is not reachable. Start Whop Clipper or the .NET backend and try again." : validation || body?.detail || body?.message || body?.error || body?.title || error.message
   return Promise.reject(new ApiError(message, error.response?.status, body?.detail))
 })
 
 function data<T>(promise: Promise<{ data: T }>) { return promise.then((response) => response.data) }
+let publishingSessionRequest: Promise<PublishingSession> | null = null
+function getPublishingSession(refresh = false) {
+  if (refresh || !publishingSessionRequest) publishingSessionRequest = data(http.get<PublishingSession>("/publishing/session"))
+  return publishingSessionRequest
+}
+async function publishingWrite<T>(request: (headers: Record<string, string>) => Promise<{ data: T }>) {
+  const run = async (refresh: boolean) => {
+    const session = await getPublishingSession(refresh)
+    return data(request({ [session.headerName]: session.nonce }))
+  }
+  try { return await run(false) }
+  catch (error) {
+    if (error instanceof ApiError && error.status === 403) return run(true)
+    throw error
+  }
+}
 function humanize(value: string) { return value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) }
 function aspectRatio(width: number, height: number) { const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a; const divisor = gcd(width, height); return `${width / divisor}:${height / divisor}` }
 function safeResult(value?: string | null): Record<string, unknown> { try { return value ? JSON.parse(value) as Record<string, unknown> : {} } catch { return {} } }
@@ -239,6 +256,35 @@ export const api = {
   mediaAssets: async () => fetchMediaAssets(),
   updateMediaAsset: async (id: string, patch: Partial<MediaAsset>) => { const current = (await fetchMediaAssets()).find((asset) => asset.id === id); if (!current) throw new ApiError("Audio asset was not found.", 404); const updated = await data(http.put<ApiMediaAsset>(`/media-library/assets/${id}`, { tags: patch.tags ?? current.tags, mood: patch.mood ?? current.mood, energy: patch.energy ?? current.energy, genre: patch.genre ?? current.genre, bpm: patch.bpm ?? current.bpm, favorite: patch.favorite ?? current.favorite, licenseNotes: patch.licenseNotes ?? current.licenseNotes })); return mapMediaAsset(updated) },
   scanMediaLibrary: async () => { const result = await data(http.post<{ indexed: number }>("/media-library/scan")); return { id: `scan-${Date.now()}`, type: "MediaScan", status: "Completed", progress: 100, message: `${result.indexed} assets indexed`, createdAt: new Date().toISOString() } satisfies Job },
+  publishingGuides: () => data(http.get<PlatformGuide[]>("/publishing/platforms")),
+  publishingGuide: (platform: PublishingPlatform) => data(http.get<PlatformGuide>(`/publishing/platforms/${platform}`)),
+  publishingSession: () => getPublishingSession(),
+  accountKits: (campaignId: string) => data(http.get<AccountKit[]>(`/campaigns/${campaignId}/publishing/account-kits`)),
+  accountKit: (campaignId: string, platform: PublishingPlatform) => data(http.get<AccountKit>(`/campaigns/${campaignId}/publishing/account-kits/${platform}`)),
+  updateAccountKit: (campaignId: string, platform: PublishingPlatform, fields: Record<string, string>) =>
+    publishingWrite((headers) => http.put<AccountKit>(`/campaigns/${campaignId}/publishing/account-kits/${platform}`, { fields }, { headers })),
+  publishingConnections: () => data(http.get<PublishingConnectionStatus[]>("/publishing/connections")),
+  publishingConnection: (platform: PublishingPlatform) => data(http.get<PublishingConnectionStatus>(`/publishing/connections/${platform}`)),
+  updatePublishingConnection: (platform: PublishingPlatform, input: PublishingConnectionInput) =>
+    publishingWrite((headers) => http.put<PublishingConnectionStatus>(`/publishing/connections/${platform}`, input, { headers })),
+  disconnectPublishingConnection: (platform: PublishingPlatform) => publishingWrite((headers) => http.delete<void>(`/publishing/connections/${platform}`, { headers })),
+  validatePublishingConnection: (platform: PublishingPlatform) => publishingWrite((headers) => http.post<PublishingConnectionStatus>(`/publishing/connections/${platform}/validate`, null, { headers })),
+  startYouTubeOAuth: () => publishingWrite((headers) => http.post<YouTubeOAuthStart>("/publishing/connections/YouTubeShorts/oauth/start", {}, { headers })),
+  publishingJobs: (filters?: { campaignId?: string; platform?: PublishingPlatform; status?: PublishStatus }) =>
+    data(http.get<PublishJob[]>("/publishing/jobs", { params: filters })),
+  publishingJob: (id: string) => data(http.get<PublishJob>(`/publishing/jobs/${id}`)),
+  createPublishingJob: (campaignId: string, input: CreatePublishJobInput) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/campaigns/${campaignId}/publishing/jobs`, input, { headers })),
+  cancelPublishingJob: (id: string) => publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/cancel`, null, { headers })),
+  confirmInstagramPublishingJob: (id: string, idempotencyKey: string) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/confirm-instagram`, { confirmed: true, idempotencyKey }, { headers })),
+  completeManualPublishingJob: (id: string, postUrl: string) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/complete-manual`, { confirmed: true, postUrl }, { headers })),
+}
+
+/** Direct download URL for the TikTok handoff ZIP. The endpoint never contains credentials. */
+export function manualPublishingPackageUrl(jobId: string) {
+  return `${API_BASE_URL}/publishing/jobs/${encodeURIComponent(jobId)}/manual-package`
 }
 
 export function getErrorMessage(error: unknown) { return error instanceof Error ? error.message : "Something went wrong." }

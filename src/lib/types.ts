@@ -1,6 +1,11 @@
 export type CampaignStatus = "Draft" | "Ready" | "Processing" | "NeedsReview" | "Completed" | "Archived"
 export type JobStatus = "Queued" | "Running" | "Completed" | "Failed" | "Cancelled"
 export type Platform = "TikTok" | "InstagramReels" | "YouTubeShorts" | "X"
+export type PublishingPlatform = Exclude<Platform, "X">
+export type PublishingConnectionMode = "Api" | "Manual"
+export type PublishingConnectionState = "NotConfigured" | "Configured" | "NeedsAttention"
+export type PublishPrivacy = "private" | "unlisted" | "public"
+export type PublishStatus = "Queued" | "Validating" | "Uploading" | "Processing" | "AwaitingFinalConfirmation" | "Published" | "RequiresManualAction" | "NeedsAttention" | "Failed" | "Cancelled"
 export type AiMode = "Claude" | "Codex" | "Auto" | "Compare"
 export type RequirementOrigin = "Extracted" | "Default" | "UserOverride"
 
@@ -386,4 +391,136 @@ export interface ValidationResult {
   }>
   outputPath?: string | null
   publishingText?: string | null
+}
+
+export interface PlatformCredentialRequirement {
+  key: string
+  label: string
+  secret: boolean
+  required: boolean
+  helpText: string
+}
+
+/** Platform guidance returned by the local API. Passwords are intentionally never part of this contract. */
+export interface PlatformGuide {
+  platform: PublishingPlatform
+  displayName: string
+  connectionMode: PublishingConnectionMode
+  signupUrl: string
+  accountTypeRequirement: string
+  credentialRequirements: PlatformCredentialRequirement[]
+  videoRequirements: string[]
+  uploadInstructions: string[]
+  limitations: string[]
+}
+
+export interface AccountKitField {
+  key: string
+  label: string
+  value: string
+  required: boolean
+  copyable: boolean
+  helpText: string
+}
+
+/** Non-secret signup/profile data scoped to one campaign and platform. */
+export interface AccountKit {
+  campaignId: string
+  platform: PublishingPlatform
+  displayName: string
+  connectionMode: PublishingConnectionMode
+  signupUrl: string
+  fields: AccountKitField[]
+  setupSteps: string[]
+  publishDefaults: {
+    enabled: boolean
+    title: string
+    caption: string
+    hashtags: string[]
+    mentions: string[]
+    disclosure?: string | null
+    callToAction?: string | null
+    privacy: PublishPrivacy
+  }
+}
+
+export interface PublishingConnectionStatus {
+  platform: PublishingPlatform
+  connectionMode: PublishingConnectionMode
+  status: PublishingConnectionState
+  configuredFields: string[]
+  secretConfigured: {
+    clientSecret: boolean
+    accessToken: boolean
+    refreshToken: boolean
+  }
+  accountIdentifier?: string | null
+  grantedScopes: string[]
+  tokenExpiresAt?: string | null
+  updatedAt?: string | null
+  lastValidatedAt?: string | null
+  lastError?: string | null
+  /** Server-evaluated publishing capability; the UI must not infer this from saved fields. */
+  canPublish: boolean
+  capabilityMessage: string
+}
+
+export interface PublishingConnectionInput {
+  clientId?: string | null
+  clientSecret?: string | null
+  accessToken?: string | null
+  refreshToken?: string | null
+  accountId?: string | null
+  authMode?: "FacebookLoginForBusiness" | null
+  pageId?: string | null
+  tokenExpiresAt?: string | null
+  clearFields?: string[]
+}
+
+export interface PublishingSession {
+  nonce: string
+  headerName: string
+}
+
+export interface PublishJob {
+  id: string
+  campaignId: string
+  platform: PublishingPlatform
+  status: PublishStatus
+  progress: number
+  outputRelativePath: string
+  fileName: string
+  title: string
+  caption: string
+  privacy: PublishPrivacy
+  shareToFeed: boolean
+  dryRun: boolean
+  accountIdentifier?: string | null
+  fileSha256: string
+  externalId?: string | null
+  externalUrl?: string | null
+  error?: string | null
+  manualPackageDownloadUrl?: string | null
+  createdAt: string
+  updatedAt: string
+  publishedAt?: string | null
+}
+
+export interface CreatePublishJobInput {
+  platform: PublishingPlatform
+  outputRelativePath: string
+  title: string
+  caption: string
+  privacy: PublishPrivacy
+  shareToFeed?: boolean
+  /** The local API refuses any upload that has not been explicitly confirmed in the UI. */
+  confirmed: true
+  /** Generated for each deliberate publish action so retries cannot create duplicate posts. */
+  idempotencyKey: string
+  dryRun?: boolean
+}
+
+export interface YouTubeOAuthStart {
+  authorizationUrl: string
+  expiresAt: string
 }

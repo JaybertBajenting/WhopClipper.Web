@@ -45,17 +45,17 @@ export function AiAnalysisPanel({ campaign, selectedCandidateId, onSelectCandida
   const [platform, setPlatform] = useState<Platform | "">(enabledProfiles[0]?.platform ?? "")
   const [mode, setMode] = useState<AiMode>(campaign.selectedAiMode ?? "Compare")
   const [transcript, setTranscript] = useState("")
-  const analysisStorageKey = `clipforge.analysis.${campaign.id}`
+  const analysisStorageKey = `whopclipper.analysis.${campaign.id}`
   const [analysisId, setAnalysisId] = useState(() => campaign.latestAnalysis?.id ?? (typeof window === "undefined" ? "" : window.localStorage.getItem(analysisStorageKey) ?? ""))
   const providers = useQuery({ queryKey: ["ai-providers"], queryFn: api.aiProviders, retry: false })
   const analysis = useQuery({ queryKey: ["analysis", analysisId], queryFn: () => api.analysis(analysisId), enabled: Boolean(analysisId), initialData: campaign.latestAnalysis?.id === analysisId ? campaign.latestAnalysis : undefined, refetchInterval: (query) => ["Queued", "Running"].includes(query.state.data?.status ?? "") ? 2_000 : false })
   const selectedSource = downloadedSources.find((source) => source.id === sourceId)
   const hasTranscript = Boolean(transcript.trim() || selectedSource?.subtitleRelativePath)
-  const start = useMutation({ mutationFn: () => { if (!platform) throw new Error("Enable and select a platform profile before running analysis."); return api.startAnalysis(campaign.id, sourceId, mode, platform, transcript) }, onSuccess: (result) => { setAnalysisId(result.id); window.localStorage.setItem(analysisStorageKey, result.id); window.localStorage.setItem(`clipforge.analysis-platform.${result.id}`, result.platform ?? platform); toast.success(`${mode} analysis queued for ${platform.replace(/([a-z])([A-Z])/g, "$1 $2")}`) }, onError: (error) => toast.error(getErrorMessage(error)) })
+  const start = useMutation({ mutationFn: () => { if (!platform) throw new Error("Enable and select a platform profile before running analysis."); return api.startAnalysis(campaign.id, sourceId, mode, platform, transcript) }, onSuccess: (result) => { setAnalysisId(result.id); window.localStorage.setItem(analysisStorageKey, result.id); window.localStorage.setItem(`whopclipper.analysis-platform.${result.id}`, result.platform ?? platform); toast.success(`${mode} analysis queued for ${platform.replace(/([a-z])([A-Z])/g, "$1 $2")}`) }, onError: (error) => toast.error(getErrorMessage(error)) })
   const select = useMutation({ mutationFn: (candidate: HighlightCandidate) => api.selectHighlight(analysisId, candidate.id).then(() => candidate), onSuccess: onSelectCandidate, onError: (error) => toast.error(getErrorMessage(error)) })
   const contextItems = ["Original campaign instructions as untrusted data", "Selected platform and target duration", "Source title and duration metadata", transcript.trim() ? "The transcript or SRT pasted below" : selectedSource?.subtitleRelativePath ? "The downloaded subtitle file attached to this source" : "No transcript is available yet"]
   const result = analysis.data
-  const storedPlatform = analysisId && typeof window !== "undefined" ? window.localStorage.getItem(`clipforge.analysis-platform.${analysisId}`) : null
+  const storedPlatform = analysisId && typeof window !== "undefined" ? window.localStorage.getItem(`whopclipper.analysis-platform.${analysisId}`) : null
   const analysisPlatform = enabledProfiles.find((profile) => profile.platform === storedPlatform)?.platform ?? result?.platform ?? platform
   return (
     <div className="space-y-5">

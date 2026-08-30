@@ -3,7 +3,7 @@ import { create } from "zustand"
 export type ThemePreference = "light" | "dark" | "system"
 export type ResolvedTheme = "light" | "dark"
 
-const STORAGE_KEY = "clipforge.theme"
+const STORAGE_KEY = "whopclipper.theme"
 const PREFERENCES: ThemePreference[] = ["light", "dark", "system"]
 
 function systemTheme(): ResolvedTheme {
