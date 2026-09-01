@@ -234,6 +234,12 @@ export const api = {
   inspectSource: async (campaignId: string, url: string) => { const response = await data(http.post<{ source: ApiSource; job: ApiJob }>(`/campaigns/${campaignId}/sources/inspect`, { url })); return mapSource(response.source) },
   addSource: async (campaignId: string, url: string) => mapSource(await data(http.post<ApiSource>(`/campaigns/${campaignId}/sources`, { url }))),
   downloadSource: async (campaignId: string, sourceAssetId: string) => mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/downloads`, { sourceAssetId }))),
+  // Queues the whole download-to-clips pipeline for every source that has no clips yet. One job
+  // per source, run one at a time, each VOD deleted before the next is fetched.
+  autoRunCampaign: async (campaignId: string, dryRun = false) => {
+    const response = await data(http.post<{ queued: ApiJob[]; outstanding: string[]; notInspected: string[]; skipped: number; estimatedBytes: number; freeBytes: number; dryRun: boolean }>(`/campaigns/${campaignId}/auto-run`, { dryRun }))
+    return { queued: response.queued.map(mapJob), outstanding: response.outstanding ?? [], notInspected: response.notInspected ?? [], skipped: response.skipped, estimatedBytes: response.estimatedBytes, freeBytes: response.freeBytes, dryRun: response.dryRun }
+  },
   startAnalysis: async (campaignId: string, sourceAssetId: string, mode: AiMode, platform: Platform, transcript?: string) => { const response = await data(http.post<{ analysisRunId: string; job: ApiJob }>(`/campaigns/${campaignId}/ai-analysis`, { sourceAssetId, mode, platform, transcript: transcript?.trim() || null })); return { id: response.analysisRunId, sourceAssetId, mode, platform, status: response.job.status, createdAt: response.job.createdAt, candidates: [] } satisfies AiAnalysis },
   analysis: async (id: string) => mapAnalysis(await data(http.get<ApiAnalysis>(`/ai-analysis/${id}`))),
   selectHighlight: (analysisId: string, highlightId: string) => data(http.post(`/ai-analysis/${analysisId}/select-highlight/${highlightId}`)),

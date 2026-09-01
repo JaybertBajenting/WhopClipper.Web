@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Download, ExternalLink, FileVideo, Link2, LoaderCircle, ShieldCheck, Subtitles, Trash2 } from "lucide-react"
+import { Download, ExternalLink, FileVideo, Link2, LoaderCircle, PlayCircle, ShieldCheck, Subtitles, Trash2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
@@ -48,10 +48,42 @@ export function SourcesPanel({ campaign }: { campaign: CampaignDetail }) {
   const queryClient = useQueryClient()
   const form = useForm<SourceValues>({ resolver: zodResolver(sourceSchema), defaultValues: { url: "", permission: false } })
   const inspect = useMutation({ mutationFn: (values: SourceValues) => api.inspectSource(campaign.id, values.url), onSuccess: () => { toast.success("Source added; metadata inspection queued"); form.reset(); queryClient.invalidateQueries({ queryKey: ["campaign", campaign.id] }); queryClient.invalidateQueries({ queryKey: ["jobs"] }) }, onError: (error) => toast.error(getErrorMessage(error)) })
+  const autoRun = useMutation({
+    mutationFn: () => api.autoRunCampaign(campaign.id),
+    onSuccess: (result) => {
+      if (result.queued.length === 0) toast.info(result.skipped > 0 ? "Every source already has clips" : "No sources to process yet")
+      else toast.success(`Queued ${result.queued.length} source${result.queued.length === 1 ? "" : "s"}${result.skipped > 0 ? `, skipped ${result.skipped} already done` : ""}`)
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaign.id] })
+      queryClient.invalidateQueries({ queryKey: ["jobs"] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  // Sources with no clips yet that are confirmed to be a single video. A known duration is that
+  // proof: campaigns also collect the brand's channel and profile links as sources, and those must
+  // not be handed to the downloader as though they were VODs. The button says how many it will take
+  // on, because each is a multi-gigabyte download and a paid analysis.
+  const outstanding = campaign.sources.filter((source) =>
+    (source.durationSeconds ?? 0) > 0 && !(campaign.editPlans ?? []).some((plan) => plan.sourceAssetId === source.id))
   return (
     <div className="space-y-5">
       <Alert tone="warning"><span className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0" /><span>Only download source media supplied or approved for this campaign. Whop Clipper does not bypass access controls, DRM, or paywalls.</span></span></Alert>
       <DetectedLinksCard campaignId={campaign.id} target="source" />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Process all sources</CardTitle>
+          <CardDescription>Downloads each source, finds its highlights, renders the clips, then deletes the video before starting the next one. Sources that already have clips are skipped.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="brand" disabled={autoRun.isPending || outstanding.length === 0} onClick={() => autoRun.mutate()}>
+              {autoRun.isPending ? <LoaderCircle className="animate-spin" /> : <PlayCircle />} Process {outstanding.length} source{outstanding.length === 1 ? "" : "s"}
+            </Button>
+            <span className="text-xs text-[var(--fg-muted)]">{campaign.sources.length - outstanding.length} of {campaign.sources.length} already have clips</span>
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-[var(--fg-muted)]">Runs one source at a time so only one video is ever on disk. A source that will not fit, or whose analysis keeps being rate limited, fails on its own and the rest carry on. Deleting the video means re-rendering its clips later needs a fresh download.</p>
+        </CardContent>
+      </Card>
 
       <LocalSourcesCard campaignId={campaign.id} />
 
