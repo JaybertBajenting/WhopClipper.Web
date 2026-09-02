@@ -183,6 +183,12 @@ export const api = {
   importDetectedLinks: (campaignId: string, urls: string[], target: "source" | "reference", download = true) =>
     data(http.post<{ added: number; skipped: number; queued: number; errors: string[] }>(`/campaigns/${campaignId}/detected-links/import`, { urls, target, confirmedPermission: true, download })),
   campaignDocuments: async (campaignId: string) => (await data(http.get<ApiCampaignDocument[]>(`/campaigns/${campaignId}/documents`))).map(mapDocument),
+  // A brief published as a web page rather than sent as a file. The server reads the markup, not a
+  // screenshot, so every link keeps the address it was published with.
+  fetchBriefPage: async (campaignId: string, url: string) => {
+    const response = await data(http.post<{ document: ApiCampaignDocument; warning?: string | null }>(`/campaigns/${campaignId}/documents/fetch`, { url }, { timeout: 45_000 }))
+    return { document: mapDocument(response.document), warning: response.warning ?? null }
+  },
   uploadCampaignDocument: async (campaignId: string, file: File, onProgress?: (percent: number) => void) => {
     if (file.size > MAX_DOCUMENT_BYTES) throw new ApiError(`“${file.name}” is larger than the ${MAX_DOCUMENT_BYTES / 1024 ** 2} MB brief upload limit.`)
     const response = await data(http.post<{ document: ApiCampaignDocument; warning?: string | null }>(`/campaigns/${campaignId}/documents`, file, {

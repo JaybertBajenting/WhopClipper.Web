@@ -95,7 +95,7 @@ export interface SourceAsset {
   createdAt?: string
 }
 
-export type CampaignDocumentKind = "Pdf" | "Word" | "Text" | "Markdown"
+export type CampaignDocumentKind = "Pdf" | "Word" | "Text" | "Markdown" | "Html"
 export type DocumentExtractionStatus = "Pending" | "Extracted" | "Failed"
 export type ReferenceVideoStatus = "Pending" | "Analyzing" | "Analyzed" | "Failed"
 
