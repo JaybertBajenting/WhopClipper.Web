@@ -1,5 +1,5 @@
 import type * as React from "react"
-import { AlertTriangle, Inbox, RefreshCw } from "lucide-react"
+import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -52,4 +52,41 @@ export function EmptyState({ title, description, action, icon }: { title: string
 export function FieldError({ children }: { children?: React.ReactNode }) {
   if (!children) return null
   return <p role="alert" className="mt-1.5 text-xs font-medium text-[var(--danger-text)]">{children}</p>
+}
+
+/**
+ * Which page numbers to draw. Long lists get an elided window rather than ninety buttons: the
+ * first and last page are always reachable, plus a run around wherever the reader is.
+ */
+function pageWindow(page: number, pageCount: number): Array<number | "gap"> {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1)
+  const near = [page - 1, page, page + 1].filter((value) => value > 1 && value < pageCount)
+  const shown = [1, ...near, pageCount]
+  const output: Array<number | "gap"> = []
+  for (const value of shown) {
+    const previous = output[output.length - 1]
+    if (typeof previous === "number" && value - previous > 1) output.push("gap")
+    output.push(value)
+  }
+  return output
+}
+
+/**
+ * Renders nothing at all when everything fits on one page, so short lists look exactly as they did
+ * before pagination existed.
+ */
+export function Pagination({ page, pageCount, total, from, to, onPageChange, noun = "items", className }: { page: number; pageCount: number; total: number; from: number; to: number; onPageChange: (page: number) => void; noun?: string; className?: string }) {
+  if (pageCount <= 1) return null
+  return (
+    <nav aria-label={`${noun} pagination`} className={cn("flex flex-col items-center justify-between gap-3 border-t border-[var(--border-default)] px-5 py-4 sm:flex-row", className)}>
+      <p className="text-xs text-[var(--fg-muted)]">Showing <span className="font-semibold text-[var(--fg-body)]">{from}–{to}</span> of {total} {noun}</p>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="sm" aria-label="Previous page" disabled={page <= 1} onClick={() => onPageChange(page - 1)}><ChevronLeft /> Prev</Button>
+        {pageWindow(page, pageCount).map((value, index) => value === "gap"
+          ? <span key={`gap-${index}`} className="px-1 text-xs text-[var(--fg-muted)]">…</span>
+          : <Button key={value} variant={value === page ? "brand" : "ghost"} size="sm" className="min-w-8 px-2" aria-label={`Page ${value}`} aria-current={value === page ? "page" : undefined} onClick={() => onPageChange(value)}>{value}</Button>)}
+        <Button variant="ghost" size="sm" aria-label="Next page" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>Next <ChevronRight /></Button>
+      </div>
+    </nav>
+  )
 }

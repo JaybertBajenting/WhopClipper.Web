@@ -3,11 +3,16 @@ import { Clapperboard, Copy, Download, FolderOpen, RefreshCw } from "lucide-reac
 import { toast } from "sonner"
 import { api, API_BASE_URL, getErrorMessage } from "@/lib/api"
 import type { RenderedClip } from "@/lib/types"
+import { usePagination } from "@/lib/pagination"
 import { formatBytes, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { EmptyState } from "@/components/page"
+import { EmptyState, Pagination } from "@/components/page"
+
+// Small on purpose. Every tile mounts a <video preload="metadata">, so the page size is the
+// number of simultaneous requests this card fires at the local API when the tab opens.
+const CLIPS_PER_PAGE = 12
 
 const platformLabels: Record<string, string> = {
   tiktok: "TikTok",
@@ -76,6 +81,7 @@ export function RenderedClipsCard({ campaignId }: { campaignId: string }) {
     queryFn: () => api.renderedClips(campaignId),
     refetchInterval: 20_000,
   })
+  const paged = usePagination(clips.data ?? [], CLIPS_PER_PAGE, campaignId)
 
   const copyFolder = async () => {
     const first = clips.data?.[0]
@@ -111,9 +117,12 @@ export function RenderedClipsCard({ campaignId }: { campaignId: string }) {
         {clips.isLoading ? (
           <p className="py-6 text-center text-sm text-[var(--fg-muted)]">Loading clips…</p>
         ) : clips.data?.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {clips.data.map((clip) => <ClipTile key={clip.relativePath} campaignId={campaignId} clip={clip} />)}
-          </div>
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {paged.items.map((clip) => <ClipTile key={clip.relativePath} campaignId={campaignId} clip={clip} />)}
+            </div>
+            <Pagination className="px-0 pb-0" page={paged.page} pageCount={paged.pageCount} total={paged.total} from={paged.from} to={paged.to} onPageChange={paged.setPage} noun="clips" />
+          </>
         ) : (
           <EmptyState
             title="No rendered clips yet"

@@ -27,7 +27,7 @@ function copyText(value: string) {
 export function ReviewPanel({ campaign }: { campaign: CampaignDetail }) {
   const [manualChecks, setManualChecks] = useState<Record<string, boolean>>({ tone: false, rights: false, copy: false })
   const [exportResult, setExportResult] = useState<{ folderRelativePath: string; summaryRelativePath: string } | null>(null)
-  const jobs = useQuery({ queryKey: ["jobs"], queryFn: api.jobs, refetchInterval: 3_000, retry: false })
+  const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => api.jobs(), refetchInterval: 3_000, retry: false })
   const campaignJobs = (jobs.data ?? []).filter((job) => job.campaignId === campaign.id)
   const renderJobs = campaignJobs.filter((job) => job.type === "Render")
   const latestRender = renderJobs[0]

@@ -219,6 +219,8 @@ export interface Job {
   id: string
   campaignId?: string | null
   campaignName?: string | null
+  /** The video this job is working on, or for a render the clip it is producing. */
+  subjectName?: string | null
   type: "Download" | "Metadata" | "Transcription" | "AiAnalysis" | "Render" | "Validation" | "Export" | string
   status: JobStatus
   progress: number
