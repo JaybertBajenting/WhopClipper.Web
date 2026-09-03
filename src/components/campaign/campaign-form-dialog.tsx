@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
-import { FileText, Paperclip, Upload, X } from "lucide-react"
+import { FileText, Globe, Paperclip, Upload, X } from "lucide-react"
 import { ACCEPTED_DOCUMENT_TYPES, api, getErrorMessage, MAX_DOCUMENT_BYTES, type CreateCampaignInput } from "@/lib/api"
 import type { CampaignDetail, CampaignSummary } from "@/lib/types"
 import { formatBytes } from "@/lib/utils"
@@ -38,12 +38,15 @@ const campaignSchema = z.object({
   rawInstructions: z.string().trim(),
   // Mirrors the attached-file count so the requirement below stays declarative.
   hasAttachment: z.boolean(),
+  /** Whether the address above will be read for the brief, which is a third way to supply one. */
+  readPage: z.boolean(),
   notes: z.string().trim().optional(),
 }).refine((values) => values.noDeadline || Boolean(values.deadline), {
   message: "Pick a deadline or switch on “No deadline”.",
   path: ["deadline"],
-}).refine((values) => values.rawInstructions.length >= 10 || values.hasAttachment, {
-  message: "Paste the campaign brief, or attach it as a PDF or Word file.",
+}).refine((values) => values.rawInstructions.length >= 10 || values.hasAttachment
+  || (values.readPage && values.whopUrl !== ""), {
+  message: "Give the brief one of three ways: paste it, attach a PDF or Word file, or enter the campaign page address above and leave “Read this page” ticked.",
   path: ["rawInstructions"],
 })
 
@@ -71,6 +74,9 @@ function toDefaults(campaign?: CampaignDetail | CampaignSummary | null): Campaig
     deadline: toDateInputValue(campaign?.deadline),
     rawInstructions: (campaign as CampaignDetail | undefined)?.rawInstructions ?? "",
     hasAttachment: Boolean((campaign as CampaignDetail | undefined)?.documents?.length),
+    // On by default when creating, so pasting an address is enough. Never on when editing: an
+    // existing workspace re-reads its page from the Requirements tab, deliberately.
+    readPage: !campaign,
     notes: (campaign as CampaignDetail | undefined)?.notes ?? "",
   }
 }
@@ -108,15 +114,18 @@ export function CampaignFormDialog({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<File[]>([])
   const [upload, setUpload] = useState<{ fileName: string; percent: number } | null>(null)
+  const [reading, setReading] = useState<string | null>(null)
   const form = useForm<CampaignFormValues>({ resolver: zodResolver(campaignSchema), defaultValues: toDefaults(campaign) })
   const noDeadline = form.watch("noDeadline")
   const payoutAmount = form.watch("payoutAmount")
+  const whopUrl = form.watch("whopUrl")
 
   useEffect(() => {
     if (!open) return
     form.reset(toDefaults(campaign))
     setFiles([])
     setUpload(null)
+    setReading(null)
     // Re-seeding on open keeps an edit dialog in step with refreshed campaign data.
   }, [open, campaign, form])
 
@@ -148,6 +157,22 @@ export function CampaignFormDialog({
         ? await api.updateCampaign(campaign.id, toInput(values))
         : await api.createCampaign(toInput(values))
       const warnings: string[] = []
+
+      // The address is read only once the campaign exists, because the document it becomes belongs
+      // to that campaign. A read that fails must not take the workspace down with it: a 404 or a
+      // JavaScript-only page should leave a usable workspace and an explanation, not nothing.
+      const readsPage = !campaign && values.readPage && values.whopUrl !== ""
+      if (readsPage) {
+        setReading(values.whopUrl)
+        try {
+          const result = await api.fetchBriefPage(saved.id, values.whopUrl)
+          if (result.warning) warnings.push(result.warning)
+        } catch (error) {
+          warnings.push(`The campaign page could not be read: ${getErrorMessage(error)} The workspace was created; paste the brief or attach a file instead.`)
+        }
+        setReading(null)
+      }
+
       for (const file of files) {
         setUpload({ fileName: file.name, percent: 0 })
         try {
@@ -158,7 +183,9 @@ export function CampaignFormDialog({
         }
       }
       setUpload(null)
-      return { campaign: files.length ? await api.campaign(saved.id) : saved, warnings }
+      // Refetched whenever anything was attached, or the workspace opens without the brief it was
+      // just given.
+      return { campaign: files.length || readsPage ? await api.campaign(saved.id) : saved, warnings }
     },
     onSuccess: async ({ campaign: saved, warnings }) => {
       await queryClient.invalidateQueries({ queryKey: ["campaigns"] })
@@ -168,7 +195,7 @@ export function CampaignFormDialog({
       onOpenChange(false)
       if (!isEdit) onCreated?.(saved)
     },
-    onError: (error) => { setUpload(null); toast.error(getErrorMessage(error)) },
+    onError: (error) => { setUpload(null); setReading(null); toast.error(getErrorMessage(error)) },
   })
 
   const formId = isEdit ? "edit-campaign" : "create-campaign"
@@ -180,7 +207,7 @@ export function CampaignFormDialog({
           <DialogDescription>
             {isEdit
               ? "Update the campaign details. Approved requirement revisions stay untouched."
-              : "Paste the original requirements or attach the brief as a PDF or Word file. You can review every extracted field before it drives an edit."}
+              : "Give the campaign page address, paste the requirements, or attach the brief as a PDF or Word file. You can review every extracted field before it drives an edit."}
           </DialogDescription>
         </DialogHeader>
         <form id={formId} className="space-y-5" onSubmit={form.handleSubmit((values) => save.mutate(values))}>
@@ -191,9 +218,21 @@ export function CampaignFormDialog({
               <FieldError>{form.formState.errors.name?.message}</FieldError>
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="whop-url">Whop campaign URL <span className="font-normal text-[var(--fg-muted)]">(optional)</span></Label>
-              <Input id="whop-url" className="mt-1.5" placeholder="https://whop.com/..." {...form.register("whopUrl")} />
+              <Label htmlFor="whop-url">Campaign page URL <span className="font-normal text-[var(--fg-muted)]">(optional)</span></Label>
+              <Input id="whop-url" className="mt-1.5" placeholder="https://whop.com/… or any campaign page" {...form.register("whopUrl")} />
               <FieldError>{form.formState.errors.whopUrl?.message}</FieldError>
+              {!isEdit && (
+                <>
+                  <label className={`mt-2.5 flex items-start gap-2.5 text-xs leading-relaxed ${whopUrl.trim() ? "cursor-pointer text-[var(--fg-body)]" : "text-[var(--fg-muted)]"}`}>
+                    <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--brand-strong)]"
+                      disabled={!whopUrl.trim() || save.isPending}
+                      checked={form.watch("readPage")}
+                      onChange={(event) => { form.setValue("readPage", event.target.checked); form.clearErrors("rawInstructions") }} />
+                    <span>Read this page for requirements and source links. Its text is attached to the workspace, so the box below can stay empty.</span>
+                  </label>
+                  {reading && <p className="mt-2 flex items-center gap-2 text-xs text-[var(--fg-body)]"><Globe className="size-3.5 shrink-0 animate-pulse" />Reading {reading}…</p>}
+                </>
+              )}
             </div>
             <div>
               <Label htmlFor="brand">Brand</Label>
@@ -297,14 +336,14 @@ export function CampaignFormDialog({
             )}
 
             <p className="mt-2 text-xs text-[var(--fg-muted)]">
-              Attached text is appended to anything pasted above, then read when you run extraction. PDF, Word (.docx), .txt, or .md up to {MAX_DOCUMENT_BYTES / 1024 ** 2} MB each.
+              A read page and any attached text are appended to whatever is pasted above, then read when you run extraction. PDF, Word (.docx), .txt, or .md up to {MAX_DOCUMENT_BYTES / 1024 ** 2} MB each.
             </p>
           </div>
         </form>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button variant="brand" type="submit" form={formId} disabled={save.isPending}>
-            {save.isPending ? (upload ? "Uploading…" : isEdit ? "Saving…" : "Creating…") : (isEdit ? "Save changes" : "Create workspace")}
+            {save.isPending ? (reading ? "Reading page…" : upload ? "Uploading…" : isEdit ? "Saving…" : "Creating…") : (isEdit ? "Save changes" : "Create workspace")}
           </Button>
         </DialogFooter>
       </DialogContent>
