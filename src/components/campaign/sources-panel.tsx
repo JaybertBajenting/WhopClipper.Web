@@ -31,7 +31,10 @@ const SOURCES_PER_PAGE = 20
  * then the button would offer work on a source the count calls done.
  */
 function processBlockedReason(campaign: CampaignDetail, source: SourceAsset): string | null {
-  if (!((source.durationSeconds ?? 0) > 0))
+  // A known duration proves it, and so does a video content type: a Google Drive file reports its
+  // type long before anything measures its duration, and testing duration alone would leave every
+  // Drive source permanently unprocessable.
+  if (!source.isVideo)
     return "Not confirmed to be a single video yet. Inspect it first — channel and profile links cannot be processed."
   if ((campaign.editPlans ?? []).some((plan) => plan.sourceAssetId === source.id))
     return "This source already has clips."

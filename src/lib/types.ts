@@ -84,6 +84,8 @@ export interface SourceAsset {
   kind?: "Remote" | "Local" | string
   status?: "Pending" | "Inspected" | "Downloading" | "Downloaded" | "Failed" | string
   durationSeconds?: number | null
+  /** Confirmed to be a single video: a known duration, or a video content type from the host. */
+  isVideo?: boolean
   uploader?: string | null
   thumbnailUrl?: string | null
   localPath?: string | null
