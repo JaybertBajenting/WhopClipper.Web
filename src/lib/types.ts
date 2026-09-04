@@ -191,6 +191,10 @@ export interface RenderedClip {
   editPlanId?: string | null
   startSeconds?: number | null
   endSeconds?: number | null
+  /** What the clip is about - the hook burned onto it. */
+  title?: string
+  /** Ready to paste into an upload form, required hashtags already included. */
+  caption?: string
 }
 
 export interface CampaignDetail extends CampaignSummary {

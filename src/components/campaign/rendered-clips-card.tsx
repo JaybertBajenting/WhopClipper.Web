@@ -1,5 +1,6 @@
+import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Clapperboard, Copy, Download, FolderOpen, RefreshCw } from "lucide-react"
+import { Check, Clapperboard, Copy, Download, FolderOpen, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { api, API_BASE_URL, getErrorMessage } from "@/lib/api"
 import type { RenderedClip } from "@/lib/types"
@@ -33,6 +34,32 @@ function clipRange(clip: RenderedClip) {
   return `${stamp(clip.startSeconds)}–${stamp(clip.endSeconds)} of source`
 }
 
+
+/** Clipboard with a visible result: copying silently gives no way to tell it worked. */
+function CopyField({ label, value, multiline = false }: { label: string; value: string; multiline?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch { toast.error("Could not copy. Select the text and copy it manually.") }
+  }
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--fg-muted)]">{label}</p>
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={copy} aria-label={`Copy ${label}`}>
+          {copied ? <Check className="text-brand-dark" /> : <Copy />} {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      {multiline
+        ? <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--surface-subtle)] p-2.5 font-sans text-xs leading-relaxed text-[var(--fg-strong)]">{value}</pre>
+        : <p className="rounded-lg bg-[var(--surface-subtle)] p-2.5 text-xs font-semibold leading-snug text-ink">{value}</p>}
+    </div>
+  )
+}
+
 function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip }) {
   const src = `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(clip.relativePath)}`
   const reveal = useMutation({
@@ -59,7 +86,9 @@ function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip
           <span className="text-xs text-[var(--fg-muted)]">{formatBytes(clip.sizeBytes)}</span>
           <span className="text-xs text-[var(--fg-muted)]">· {formatDate(clip.createdAt, true)}</span>
         </div>
-        <p className="truncate text-sm font-semibold text-ink" title={clip.fileName}>{clip.fileName}</p>
+        {clip.title ? <CopyField label="Title" value={clip.title} /> : null}
+        {clip.caption ? <CopyField label="Caption" value={clip.caption} multiline /> : null}
+        <p className="truncate font-mono text-[10px] text-[var(--fg-muted)]" title={clip.fileName}>{clip.fileName}</p>
         {range && <p className="text-xs text-[var(--fg-muted)]">{range}</p>}
         <div className="flex flex-wrap gap-2 pt-1">
           <Button variant="outline" size="sm" onClick={() => reveal.mutate()} disabled={reveal.isPending}>
