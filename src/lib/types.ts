@@ -181,6 +181,17 @@ export interface DetectedLink {
   alreadyReference: boolean
 }
 
+/**
+ * Campaign media on disk that no campaign owns. Left behind when a campaign's rows were deleted
+ * but its folder could not be, so nothing in the app points at it any more.
+ */
+export interface OrphanedCampaignFolder {
+  folderName: string
+  sizeBytes: number
+  fileCount: number
+  lastModified: string
+}
+
 /** A finished render sitting in the campaign's output folder. */
 export interface RenderedClip {
   relativePath: string
