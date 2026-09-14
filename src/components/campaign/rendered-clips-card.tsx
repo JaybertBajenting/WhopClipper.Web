@@ -1,8 +1,9 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, Clapperboard, Copy, Download, FolderOpen, RefreshCw } from "lucide-react"
+import { Check, Clapperboard, Copy, Download, Film, FolderOpen, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { api, API_BASE_URL, getErrorMessage } from "@/lib/api"
+import { describeClipStyle } from "@/lib/edit-style"
 import type { RenderedClip } from "@/lib/types"
 import { usePagination } from "@/lib/pagination"
 import { formatBytes, formatDate } from "@/lib/utils"
@@ -60,6 +61,32 @@ function CopyField({ label, value, multiline = false }: { label: string; value: 
   )
 }
 
+/** Podcast-split clips only: the footage that went underneath, and any moment nothing usable came back for. */
+function ClipFootage({ clip }: { clip: RenderedClip }) {
+  const described = describeClipStyle(clip.style)
+  if (!described || !clip.style) return null
+  return (
+    <details className="rounded-lg bg-[var(--surface-subtle)] p-2.5 text-xs">
+      <summary className="flex cursor-pointer flex-wrap items-center gap-2 font-semibold text-[var(--fg-strong)]">
+        <Film className="size-3.5" /> {described.summary}
+        {described.gapCount > 0 && <Badge variant="warning">Check footage</Badge>}
+      </summary>
+      <ul className="mt-2 space-y-1 text-[var(--fg-muted)]">
+        {clip.style.footage.map((item, index) => (
+          <li key={`${item.url ?? item.query}-${index}`} className="truncate">
+            {item.url
+              ? <a href={item.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{item.title || item.query}</a>
+              : item.title || item.query}
+          </li>
+        ))}
+        {clip.style.gaps.map((gap) => (
+          <li key={`gap-${gap.atSeconds}`}>No footage at {gap.atSeconds.toFixed(1)}s for “{gap.query}”: {gap.reason}</li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
 function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip }) {
   const src = `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(clip.relativePath)}`
   const reveal = useMutation({
@@ -90,6 +117,7 @@ function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip
         {clip.caption ? <CopyField label="Caption" value={clip.caption} multiline /> : null}
         <p className="truncate font-mono text-[10px] text-[var(--fg-muted)]" title={clip.fileName}>{clip.fileName}</p>
         {range && <p className="text-xs text-[var(--fg-muted)]">{range}</p>}
+        <ClipFootage clip={clip} />
         <div className="flex flex-wrap gap-2 pt-1">
           <Button variant="outline" size="sm" onClick={() => reveal.mutate()} disabled={reveal.isPending}>
             <FolderOpen /> Show in folder

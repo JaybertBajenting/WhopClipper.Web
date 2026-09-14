@@ -127,6 +127,31 @@ export interface CampaignBranding {
   enabled: boolean
 }
 
+export type EditStyleKind = "Streamer" | "PodcastSplit"
+
+/** Which edit a campaign's clips get. The podcast fields only matter for "PodcastSplit". */
+export interface CampaignEditStyle {
+  style: EditStyleKind
+  musicVolume: number
+  musicDuckingDb: number
+  captionFont: string
+  captionFontSize: number
+  logoWidthFraction: number
+  logoRightMarginFraction: number
+  logoTopMarginFraction: number
+  brollShotSeconds: number
+}
+
+/** How a podcast-split clip was put together: the footage underneath and any moment left without any. */
+export interface RenderedClipStyle {
+  style: EditStyleKind | string
+  pieces: number
+  cameraShots: number
+  brollShots: number
+  gaps: Array<{ atSeconds: number; durationSeconds: number; query: string; reason: string }>
+  footage: Array<{ query: string; title?: string | null; url?: string | null }>
+}
+
 export interface ReferenceStyleProfile {
   schemaVersion: string
   durationSeconds: number
@@ -206,6 +231,8 @@ export interface RenderedClip {
   title?: string
   /** Ready to paste into an upload form, required hashtags already included. */
   caption?: string
+  /** Set for podcast-split clips only. */
+  style?: RenderedClipStyle | null
 }
 
 export interface CampaignDetail extends CampaignSummary {
@@ -217,6 +244,8 @@ export interface CampaignDetail extends CampaignSummary {
   documents: CampaignDocument[]
   referenceVideos: ReferenceVideo[]
   branding?: CampaignBranding | null
+  /** Null until a style is chosen, which means the streamer style. */
+  editStyle?: CampaignEditStyle | null
   selectedAiMode?: AiMode
   latestAnalysis?: AiAnalysis | null
   editPlans?: EditPlan[]
