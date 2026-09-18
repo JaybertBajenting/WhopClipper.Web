@@ -140,6 +140,8 @@ export interface CampaignEditStyle {
   logoRightMarginFraction: number
   logoTopMarginFraction: number
   brollShotSeconds: number
+  /** The one folder of music beds this campaign draws from; unset means every enabled folder. */
+  musicLocationId?: string | null
 }
 
 /** How a podcast-split clip was put together: the footage underneath and any moment left without any. */
