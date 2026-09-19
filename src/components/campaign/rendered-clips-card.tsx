@@ -87,18 +87,23 @@ function ClipFootage({ clip }: { clip: RenderedClip }) {
   )
 }
 
-function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip }) {
+const pct = (value: number) => `${Math.round(value * 100)}%`
+
+function ClipTile({ campaignId, clip, defaultVoice, defaultMusic }: { campaignId: string; clip: RenderedClip; defaultVoice: number; defaultMusic: number }) {
   const queryClient = useQueryClient()
   const src = `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(clip.relativePath)}`
+  // Start from this clip's own volumes if it has them, otherwise the campaign default.
+  const [voice, setVoice] = useState(clip.style?.voiceVolume ?? defaultVoice)
+  const [music, setMusic] = useState(clip.style?.musicVolume ?? defaultMusic)
   const reveal = useMutation({
     mutationFn: () => api.revealOutput(campaignId, clip.relativePath),
     onSuccess: (result) => { if (!result.revealed) toast.info(result.folder ?? "Could not open the folder.") },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
   const rerender = useMutation({
-    mutationFn: () => api.rerenderClip(clip.editPlanId!),
+    mutationFn: () => api.rerenderClip(clip.editPlanId!, { voiceVolume: voice, musicVolume: music }),
     onSuccess: () => {
-      toast.success("Re-rendering with the current voice and music volumes. It replaces this clip when done.")
+      toast.success("Re-rendering this clip with your voice and music levels. It replaces this clip when done.")
       queryClient.invalidateQueries({ queryKey: ["campaign", campaignId, "jobs"] })
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -127,6 +132,24 @@ function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip
         <p className="truncate font-mono text-[10px] text-[var(--fg-muted)]" title={clip.fileName}>{clip.fileName}</p>
         {range && <p className="text-xs text-[var(--fg-muted)]">{range}</p>}
         <ClipFootage clip={clip} />
+        {clip.style && clip.editPlanId ? (
+          <div className="space-y-2 rounded-lg bg-[var(--surface-subtle)] p-2.5">
+            <div>
+              <label className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--fg-strong)]" htmlFor={`voice-${clip.editPlanId}`}>
+                <span>Podcast voice</span><span>{pct(voice)}</span>
+              </label>
+              <input id={`voice-${clip.editPlanId}`} type="range" min={50} max={200} value={Math.round(voice * 100)} className="w-full"
+                onChange={(event) => setVoice(Number(event.target.value) / 100)} />
+            </div>
+            <div>
+              <label className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--fg-strong)]" htmlFor={`music-${clip.editPlanId}`}>
+                <span>Music</span><span>{pct(music)}</span>
+              </label>
+              <input id={`music-${clip.editPlanId}`} type="range" min={0} max={60} value={Math.round(music * 100)} className="w-full"
+                onChange={(event) => setMusic(Number(event.target.value) / 100)} />
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-2 pt-1">
           <Button variant="outline" size="sm" onClick={() => reveal.mutate()} disabled={reveal.isPending}>
             <FolderOpen /> Show in folder
@@ -145,7 +168,7 @@ function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip
   )
 }
 
-export function RenderedClipsCard({ campaignId }: { campaignId: string }) {
+export function RenderedClipsCard({ campaignId, defaultVoice = 1, defaultMusic = 0.2 }: { campaignId: string; defaultVoice?: number; defaultMusic?: number }) {
   const queryClient = useQueryClient()
   const clips = useQuery({
     queryKey: ["campaign", campaignId, "outputs"],
@@ -190,7 +213,7 @@ export function RenderedClipsCard({ campaignId }: { campaignId: string }) {
         ) : clips.data?.length ? (
           <>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {paged.items.map((clip) => <ClipTile key={clip.relativePath} campaignId={campaignId} clip={clip} />)}
+              {paged.items.map((clip) => <ClipTile key={clip.relativePath} campaignId={campaignId} clip={clip} defaultVoice={defaultVoice} defaultMusic={defaultMusic} />)}
             </div>
             <Pagination className="px-0 pb-0" page={paged.page} pageCount={paged.pageCount} total={paged.total} from={paged.from} to={paged.to} onPageChange={paged.setPage} noun="clips" />
           </>

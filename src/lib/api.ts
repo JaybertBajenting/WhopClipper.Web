@@ -216,8 +216,9 @@ export const api = {
   /** Builds exactly these stories from one episode with the podcast-split edit. */
   importStories: async (campaignId: string, input: { sourceAssetId?: string; url?: string; stories: Array<{ title: string; pieces: Array<{ startSeconds: number; endSeconds: number }> }> }) =>
     mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/stories`, input))),
-  /** Re-render one podcast-split clip from its stored story, using the campaign's current voice/music volumes. */
-  rerenderClip: async (editPlanId: string) => mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/rerender`))),
+  /** Re-render one podcast-split clip from its stored story. Pass volumes to override the campaign default for this clip. */
+  rerenderClip: async (editPlanId: string, volumes?: { voiceVolume?: number; musicVolume?: number }) =>
+    mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/rerender`, undefined, { params: volumes }))),
   referenceVideos: async (campaignId: string) => (await data(http.get<ApiReferenceVideo[]>(`/campaigns/${campaignId}/reference-videos`))).map(mapReference),
   addReferenceVideo: async (campaignId: string, input: { url: string; label?: string; notes?: string; isPrimary?: boolean }) => {
     const response = await data(http.post<{ reference: ApiReferenceVideo; job: ApiJob } | ApiReferenceVideo>(`/campaigns/${campaignId}/reference-videos`, { url: input.url, label: input.label || null, notes: input.notes || null, isPrimary: input.isPrimary ?? false }))

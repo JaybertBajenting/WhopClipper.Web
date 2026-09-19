@@ -154,6 +154,9 @@ export interface RenderedClipStyle {
   brollShots: number
   gaps: Array<{ atSeconds: number; durationSeconds: number; query: string; reason: string }>
   footage: Array<{ query: string; title?: string | null; url?: string | null }>
+  /** This clip's own voice/music gains, if it overrides the campaign default. */
+  voiceVolume?: number | null
+  musicVolume?: number | null
 }
 
 export interface ReferenceStyleProfile {
