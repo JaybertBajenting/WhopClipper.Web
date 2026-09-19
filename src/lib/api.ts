@@ -219,6 +219,13 @@ export const api = {
   /** Re-render one podcast-split clip from its stored story. Pass volumes to override the campaign default for this clip. */
   rerenderClip: async (editPlanId: string, volumes?: { voiceVolume?: number; musicVolume?: number }) =>
     mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/rerender`, undefined, { params: volumes }))),
+  /** Live-preview info for a clip: its music-free companion video, the song + where it starts, and current volumes. */
+  clipPreview: async (editPlanId: string) => data(http.get<{
+    campaignId: string; previewRelativePath: string | null; musicAssetId: string | null
+    musicStartSeconds: number; voiceVolume: number; musicVolume: number
+  }>(`/edit-plans/${editPlanId}/preview`)),
+  /** URL that streams a music/sfx file for the in-browser preview mixer. */
+  musicFileUrl: (assetId: string) => `${API_BASE_URL}/media-library/assets/${assetId}/file`,
   referenceVideos: async (campaignId: string) => (await data(http.get<ApiReferenceVideo[]>(`/campaigns/${campaignId}/reference-videos`))).map(mapReference),
   addReferenceVideo: async (campaignId: string, input: { url: string; label?: string; notes?: string; isPrimary?: boolean }) => {
     const response = await data(http.post<{ reference: ApiReferenceVideo; job: ApiJob } | ApiReferenceVideo>(`/campaigns/${campaignId}/reference-videos`, { url: input.url, label: input.label || null, notes: input.notes || null, isPrimary: input.isPrimary ?? false }))

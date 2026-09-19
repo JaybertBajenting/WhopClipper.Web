@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, Clapperboard, Copy, Download, Film, FolderOpen, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
@@ -108,18 +108,45 @@ function ClipTile({ campaignId, clip, defaultVoice, defaultMusic }: { campaignId
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
+  // Live preview: play the music-free companion + the song as a separate track, mixed by the sliders.
+  const preview = useQuery({
+    queryKey: ["clip-preview", clip.editPlanId],
+    queryFn: () => api.clipPreview(clip.editPlanId!),
+    enabled: Boolean(clip.editPlanId && clip.style),
+  })
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const companion = preview.data?.previewRelativePath
+  const musicUrl = preview.data?.musicAssetId ? api.musicFileUrl(preview.data.musicAssetId) : null
+  const musicStart = preview.data?.musicStartSeconds ?? 0
+  const canLiveMix = Boolean(companion && musicUrl)
+  const videoSrc = companion
+    ? `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(companion)}`
+    : src
+  // Sliders drive the elements directly, so the balance changes while it plays - no re-render.
+  useEffect(() => {
+    if (!canLiveMix) return
+    if (videoRef.current) videoRef.current.volume = Math.min(1, voice)
+    if (audioRef.current) audioRef.current.volume = Math.min(1, music)
+  }, [voice, music, canLiveMix])
   const range = clipRange(clip)
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--surface-raised)]">
       {/* Vertical clips, so the player is constrained rather than letterboxed into a wide box. */}
       <div className="flex justify-center bg-[var(--surface-inverse)] p-2">
         <video
+          ref={videoRef}
           className="max-h-[420px] w-auto rounded-xl"
-          src={src}
+          src={videoSrc}
           controls
           preload="metadata"
           playsInline
+          onPlay={() => { if (canLiveMix && audioRef.current) { audioRef.current.currentTime = musicStart; audioRef.current.volume = Math.min(1, music); void audioRef.current.play().catch(() => {}) } }}
+          onPause={() => audioRef.current?.pause()}
+          onEnded={() => { if (audioRef.current) audioRef.current.pause() }}
+          onSeeked={() => { if (canLiveMix && audioRef.current) audioRef.current.currentTime = musicStart + (videoRef.current?.currentTime ?? 0) }}
         />
+        {canLiveMix && musicUrl ? <audio ref={audioRef} src={musicUrl} loop preload="auto" /> : null}
       </div>
       <div className="space-y-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -148,6 +175,11 @@ function ClipTile({ campaignId, clip, defaultVoice, defaultMusic }: { campaignId
               <input id={`music-${clip.editPlanId}`} type="range" min={0} max={60} value={Math.round(music * 100)} className="w-full"
                 onChange={(event) => setMusic(Number(event.target.value) / 100)} />
             </div>
+            <p className="text-[10px] text-[var(--fg-muted)]">
+              {canLiveMix
+                ? "Play the clip and drag — you hear the balance change live (approximate). Re-render to bake it in."
+                : "Re-render to apply these levels (live preview is available after the next re-render)."}
+            </p>
           </div>
         ) : null}
         <div className="flex flex-wrap gap-2 pt-1">
