@@ -77,12 +77,20 @@ export function EditStyleCard({ campaignId, editStyle }: { campaignId: string; e
                 <p className="mt-1 text-xs text-[var(--fg-muted)]">Double Coverage TV changes footage about every 2.2 seconds.</p>
               </div>
               <div>
+                <label className="mb-2 block text-sm font-semibold text-[var(--fg-strong)]" htmlFor="voice-volume">
+                  Podcast voice: {percent(draft.voiceVolume ?? 1)}
+                </label>
+                <input id="voice-volume" type="range" min={50} max={200} value={Math.round((draft.voiceVolume ?? 1) * 100)} className="w-full"
+                  onChange={(event) => setDraft({ ...draft, voiceVolume: Number(event.target.value) / 100 })} />
+                <p className="mt-1 text-xs text-[var(--fg-muted)]">How loud the talking is. Turn up if the music covers it.</p>
+              </div>
+              <div>
                 <label className="mb-2 block text-sm font-semibold text-[var(--fg-strong)]" htmlFor="music-bed-volume">
                   Music bed: {percent(draft.musicVolume)}
                 </label>
                 <input id="music-bed-volume" type="range" min={0} max={60} value={Math.round(draft.musicVolume * 100)} className="w-full"
                   onChange={(event) => setDraft({ ...draft, musicVolume: Number(event.target.value) / 100 })} />
-                <p className="mt-1 text-xs text-[var(--fg-muted)]">Ducked under the speech; picked in turn from your music library.</p>
+                <p className="mt-1 text-xs text-[var(--fg-muted)]">Under the speech. Adjust both, save, then re-render a clip to hear it.</p>
               </div>
             </div>
             <SplitPreview />
@@ -101,9 +109,9 @@ export function EditStyleCard({ campaignId, editStyle }: { campaignId: string; e
             <span className="flex gap-2">
               <Info className="mt-0.5 size-4 shrink-0" />
               <span>
-                Footage is found on YouTube for each named person, event or place. Broadcaster logos and score bugs are
-                cropped out, or blurred when they sit mid-frame. Each clip lists the footage it used and any moment where
-                nothing usable came back.
+                Relevant B-roll is required for the whole lower half. Missing footage stops a new render instead of
+                filling it with an unrelated shot. Review the listed source links for correct people, events and
+                permission to reuse them; search matches alone do not verify what the footage shows.
               </span>
             </span>
           </Alert>

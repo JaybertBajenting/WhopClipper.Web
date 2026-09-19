@@ -3,8 +3,9 @@ import type { CampaignEditStyle, EditStyleKind, RenderedClipStyle } from "@/lib/
 /** What the API returns for a campaign that has never picked a style. */
 export const DEFAULT_EDIT_STYLE: CampaignEditStyle = {
   style: "Streamer",
-  musicVolume: 0.3,
-  musicDuckingDb: -10,
+  musicVolume: 0.2,
+  voiceVolume: 1,
+  musicDuckingDb: -14,
   captionFont: "Segoe UI Black",
   captionFontSize: 84,
   logoWidthFraction: 0.2,
@@ -22,13 +23,15 @@ export const EDIT_STYLE_OPTIONS: Array<{ value: EditStyleKind; title: string; de
   {
     value: "PodcastSplit",
     title: "Podcast split + B-roll",
-    description: "Guest on top, footage of what they are talking about underneath, one word at a time on the split line. Downloads only the minutes each story needs.",
+    description: "Guest on top, required relevant B-roll underneath, one word at a time on the split line. Missing footage stops the render for review.",
   },
 ]
 
 export const editStyleSignature = (style?: CampaignEditStyle | null) => {
   const value = style ?? DEFAULT_EDIT_STYLE
-  return [value.style, value.musicVolume, value.musicDuckingDb, value.brollShotSeconds, value.logoWidthFraction].join("|")
+  return [value.style, value.musicVolume, value.voiceVolume ?? 1, value.musicDuckingDb, value.brollShotSeconds,
+    value.logoWidthFraction, value.captionFont, value.captionFontSize, value.logoRightMarginFraction,
+    value.logoTopMarginFraction].join("|")
 }
 
 /** One line for a clip tile: how many shots of footage, and whether any moment came back empty. */

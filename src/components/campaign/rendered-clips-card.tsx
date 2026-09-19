@@ -69,7 +69,7 @@ function ClipFootage({ clip }: { clip: RenderedClip }) {
     <details className="rounded-lg bg-[var(--surface-subtle)] p-2.5 text-xs">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 font-semibold text-[var(--fg-strong)]">
         <Film className="size-3.5" /> {described.summary}
-        {described.gapCount > 0 && <Badge variant="warning">Check footage</Badge>}
+        {described.gapCount > 0 && <Badge variant="warning">Incomplete B-roll — needs repair</Badge>}
       </summary>
       <ul className="mt-2 space-y-1 text-[var(--fg-muted)]">
         {clip.style.footage.map((item, index) => (
@@ -80,7 +80,7 @@ function ClipFootage({ clip }: { clip: RenderedClip }) {
           </li>
         ))}
         {clip.style.gaps.map((gap) => (
-          <li key={`gap-${gap.atSeconds}`}>No footage at {gap.atSeconds.toFixed(1)}s for “{gap.query}”: {gap.reason}</li>
+          <li key={`gap-${gap.atSeconds}`}>Missing required footage at {gap.atSeconds.toFixed(1)}–{(gap.atSeconds + gap.durationSeconds).toFixed(1)}s for “{gap.query}”: {gap.reason}</li>
         ))}
       </ul>
     </details>
@@ -88,10 +88,19 @@ function ClipFootage({ clip }: { clip: RenderedClip }) {
 }
 
 function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip }) {
+  const queryClient = useQueryClient()
   const src = `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(clip.relativePath)}`
   const reveal = useMutation({
     mutationFn: () => api.revealOutput(campaignId, clip.relativePath),
     onSuccess: (result) => { if (!result.revealed) toast.info(result.folder ?? "Could not open the folder.") },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  const rerender = useMutation({
+    mutationFn: () => api.rerenderClip(clip.editPlanId!),
+    onSuccess: () => {
+      toast.success("Re-rendering with the current voice and music volumes. It replaces this clip when done.")
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId, "jobs"] })
+    },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
   const range = clipRange(clip)
@@ -125,6 +134,11 @@ function ClipTile({ campaignId, clip }: { campaignId: string; clip: RenderedClip
           <Button variant="ghost" size="sm" asChild>
             <a href={src} download={clip.fileName}><Download /> Save a copy</a>
           </Button>
+          {clip.style && clip.editPlanId ? (
+            <Button variant="outline" size="sm" onClick={() => rerender.mutate()} disabled={rerender.isPending}>
+              <RefreshCw className={rerender.isPending ? "animate-spin" : undefined} /> Re-render
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
