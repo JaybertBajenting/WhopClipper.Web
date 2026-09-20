@@ -142,6 +142,8 @@ export interface CampaignEditStyle {
   brollShotSeconds: number
   /** The one folder of music beds this campaign draws from; unset means every enabled folder. */
   musicLocationId?: string | null
+  /** File names this campaign will not use, e.g. a bed that drowned the speech. Never offered or picked. */
+  excludedMusic?: string[] | null
   /** Loudness of the podcast voice, 1 = the normalised baseline. Turn up if music covers it. */
   voiceVolume?: number
 }

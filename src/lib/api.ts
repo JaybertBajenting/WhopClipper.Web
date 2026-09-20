@@ -226,6 +226,10 @@ export const api = {
   }>(`/edit-plans/${editPlanId}/preview`)),
   /** URL that streams a music/sfx file for the in-browser preview mixer. */
   musicFileUrl: (assetId: string) => `${API_BASE_URL}/media-library/assets/${assetId}/file`,
+  /** Point one clip at a chosen bed. Omit the start to enter at that song's own segment from the folder guide. */
+  setClipMusic: (editPlanId: string, musicAssetId: string | null, musicStartSeconds?: number | null) =>
+    data(http.put<{ musicAssetId: string | null; musicStartSeconds: number | null }>(
+      `/edit-plans/${editPlanId}/music`, { musicAssetId, musicStartSeconds: musicStartSeconds ?? null })),
   referenceVideos: async (campaignId: string) => (await data(http.get<ApiReferenceVideo[]>(`/campaigns/${campaignId}/reference-videos`))).map(mapReference),
   addReferenceVideo: async (campaignId: string, input: { url: string; label?: string; notes?: string; isPrimary?: boolean }) => {
     const response = await data(http.post<{ reference: ApiReferenceVideo; job: ApiJob } | ApiReferenceVideo>(`/campaigns/${campaignId}/reference-videos`, { url: input.url, label: input.label || null, notes: input.notes || null, isPrimary: input.isPrimary ?? false }))

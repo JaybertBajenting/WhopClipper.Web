@@ -50,7 +50,7 @@ export function ReviewPanel({ campaign }: { campaign: CampaignDetail }) {
   const validate = useMutation({ mutationFn: () => api.validateRender(latestRender!.id), onSuccess: () => { toast.success("Technical validation queued"); jobs.refetch() }, onError: (error) => toast.error(getErrorMessage(error)) })
   return (
     <div className="space-y-5">
-      <RenderedClipsCard campaignId={campaign.id} defaultVoice={campaign.editStyle?.voiceVolume ?? 1} defaultMusic={campaign.editStyle?.musicVolume ?? 0.2} />
+      <RenderedClipsCard campaignId={campaign.id} defaultVoice={campaign.editStyle?.voiceVolume ?? 1} defaultMusic={campaign.editStyle?.musicVolume ?? 0.2} musicLocationId={campaign.editStyle?.musicLocationId} excludedMusic={campaign.editStyle?.excludedMusic} />
 
       <Alert><span className="flex gap-2"><Info className="mt-0.5 size-4 shrink-0" /><span>Whop Clipper prepares a package for your review. Publishing is automatic only for explicitly connected, eligible platforms; TikTok and Whop campaign submission remain manual.</span></span></Alert>
       {!latestRender ? <EmptyState title="No render to review" description="Approve an edit plan and queue a render. Completed output will appear here with technical validation." icon={<FileCheck2 className="size-6" />} /> : (
