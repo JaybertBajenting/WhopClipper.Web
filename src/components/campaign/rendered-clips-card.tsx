@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, Check, Clapperboard, Copy, Download, Film, FolderOpen, Music, Play, RefreshCw } from "lucide-react"
+import { AlertTriangle, Check, Clapperboard, Copy, Download, Film, FolderOpen, Music, Play, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { api, API_BASE_URL, getErrorMessage } from "@/lib/api"
 import { describeClipStyle } from "@/lib/edit-style"
-import type { RenderedClip } from "@/lib/types"
+import type { CampaignEditStyle, Job, RenderedClip } from "@/lib/types"
 import { usePagination } from "@/lib/pagination"
 import { formatBytes, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -87,7 +87,7 @@ function ClipFootage({ clip }: { clip: RenderedClip }) {
           </li>
         ))}
         {clip.style.gaps.map((gap) => (
-          <li key={`gap-${gap.atSeconds}`}>Missing footage at {gap.atSeconds.toFixed(1)}–{(gap.atSeconds + gap.durationSeconds).toFixed(1)}s for “{gap.query}”: {gap.reason}</li>
+          <li key={`gap-${gap.atSeconds}`}>Missing footage at {gap.atSeconds.toFixed(1)}-{(gap.atSeconds + gap.durationSeconds).toFixed(1)}s for {gap.query}: {gap.reason}</li>
         ))}
       </ul>
     </details>
@@ -95,10 +95,89 @@ function ClipFootage({ clip }: { clip: RenderedClip }) {
 }
 
 /**
+ * The levels every new clip starts from. It lives here, beside the clips, because this is where you
+ * hear that the balance is wrong. It used to sit on the Requirements tab, which is not where anyone
+ * looking at a finished clip thinks to go.
+ */
+function DefaultVolumes({ campaignId, editStyle }: { campaignId: string; editStyle?: CampaignEditStyle | null }) {
+  const queryClient = useQueryClient()
+  const savedVoice = editStyle?.voiceVolume ?? 1
+  const savedMusic = editStyle?.musicVolume ?? 0.2
+  const [voice, setVoice] = useState(savedVoice)
+  const [music, setMusic] = useState(savedMusic)
+  const [synced, setSynced] = useState(`${savedVoice}/${savedMusic}`)
+  if (synced !== `${savedVoice}/${savedMusic}`) {
+    setSynced(`${savedVoice}/${savedMusic}`)
+    setVoice(savedVoice)
+    setMusic(savedMusic)
+  }
+  const dirty = voice !== savedVoice || music !== savedMusic
+  const save = useMutation({
+    mutationFn: () => api.updateCampaignEditStyle(campaignId,
+      { ...(editStyle as CampaignEditStyle), voiceVolume: voice, musicVolume: music }),
+    onSuccess: () => {
+      toast.success("Saved. Every clip rendered from now on starts at these levels.")
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  if (!editStyle) return null
+  return (
+    <details className="mb-4 rounded-xl border border-[var(--border-default)] bg-[var(--surface-subtle)] p-3">
+      <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-xs font-semibold text-[var(--fg-strong)]">
+        <SlidersHorizontal className="size-3.5" /> Default levels for all clips
+        <span className="font-normal text-[var(--fg-muted)]">voice {pct(savedVoice)} · music {pct(savedMusic)}</span>
+      </summary>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--fg-strong)]" htmlFor="default-voice">
+            <span>Podcast voice</span><span className="tabular-nums">{pct(voice)}</span>
+          </label>
+          <input id="default-voice" type="range" min={50} max={200} value={Math.round(voice * 100)} className="w-full"
+            onChange={(event) => setVoice(Number(event.target.value) / 100)} />
+        </div>
+        <div>
+          <label className="mb-1 flex items-center justify-between text-[11px] font-semibold text-[var(--fg-strong)]" htmlFor="default-music">
+            <span>Music</span><span className="tabular-nums">{pct(music)}</span>
+          </label>
+          <input id="default-music" type="range" min={0} max={60} value={Math.round(music * 100)} className="w-full"
+            onChange={(event) => setMusic(Number(event.target.value) / 100)} />
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>Save defaults</Button>
+        <p className="text-[10px] text-[var(--fg-muted)]">
+          Applies to clips rendered from now on. Clips already cut keep their levels until you re-render them.
+        </p>
+      </div>
+    </details>
+  )
+}
+
+/** Progress for one clip's re-render, shown wherever that clip appears. */
+function RerenderProgress({ job }: { job: Job }) {
+  return (
+    <div className="space-y-1.5 rounded-lg bg-[var(--surface-subtle)] p-2.5">
+      <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--fg-strong)]">
+        <span className="flex items-center gap-1.5">
+          <RefreshCw className="size-3.5 animate-spin" />
+          {job.status === "Queued" ? "Waiting for a slot..." : "Re-rendering..."}
+        </span>
+        <span className="tabular-nums">{Math.round(job.progress ?? 0)}%</span>
+      </div>
+      <Progress value={job.progress ?? 0} />
+      <p className="text-[10px] text-[var(--fg-muted)]">
+        Keeps running if you close this - the clip shows its progress in the grid.
+      </p>
+    </div>
+  )
+}
+
+/**
  * The compact grid tile: a poster, the title and the few facts worth scanning. Everything you can
  * change lives in the detail dialog, so a page of twelve stays readable.
  */
-function ClipTile({ campaignId, clip, onOpen }: { campaignId: string; clip: RenderedClip; onOpen: () => void }) {
+function ClipTile({ campaignId, clip, job, onOpen }: { campaignId: string; clip: RenderedClip; job?: Job; onOpen: () => void }) {
   const src = `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(clip.relativePath)}`
   const gaps = clip.style?.gaps?.length ?? 0
   const length = clipLength(clip)
@@ -113,13 +192,22 @@ function ClipTile({ campaignId, clip, onOpen }: { campaignId: string; clip: Rend
         <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition group-hover:opacity-100">
           <span className="flex size-11 items-center justify-center rounded-full bg-white/90 text-ink shadow"><Play className="size-5" /></span>
         </div>
-        {gaps > 0 && (
-          <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-[var(--warning-solid,#b45309)] px-2 py-0.5 text-[10px] font-semibold text-white">
-            <AlertTriangle className="size-3" /> B-roll
+        {job ? (
+          <span className="absolute inset-x-2 bottom-2 flex items-center gap-1.5 rounded-md bg-black/80 px-2 py-1 text-[10px] font-semibold text-white">
+            <RefreshCw className="size-3 animate-spin" />
+            {job.status === "Queued" ? "Queued" : `Re-rendering ${Math.round(job.progress ?? 0)}%`}
           </span>
-        )}
-        {length && (
-          <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">{length}</span>
+        ) : (
+          <>
+            {gaps > 0 && (
+              <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-[var(--warning-solid,#b45309)] px-2 py-0.5 text-[10px] font-semibold text-white">
+                <AlertTriangle className="size-3" /> B-roll
+              </span>
+            )}
+            {length && (
+              <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">{length}</span>
+            )}
+          </>
         )}
       </div>
       <div className="flex flex-col gap-1 p-3">
@@ -134,10 +222,11 @@ function ClipTile({ campaignId, clip, onOpen }: { campaignId: string; clip: Rend
 
 /** Everything you can play, tune or re-cut for one clip. Mounted only while its tile is open. */
 function ClipDetail({
-  campaignId, clip, defaultVoice, defaultMusic, musicLocationId, excludedMusic, onClose,
+  campaignId, clip, defaultVoice, defaultMusic, musicLocationId, excludedMusic, job, onRerender, onClose,
 }: {
   campaignId: string; clip: RenderedClip; defaultVoice: number; defaultMusic: number
-  musicLocationId?: string | null; excludedMusic?: string[] | null; onClose: () => void
+  musicLocationId?: string | null; excludedMusic?: string[] | null
+  job?: Job; onRerender: (editPlanId: string, jobId: string) => void; onClose: () => void
 }) {
   const queryClient = useQueryClient()
   const src = `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(clip.relativePath)}`
@@ -145,7 +234,8 @@ function ClipDetail({
   const [music, setMusic] = useState(clip.style?.musicVolume ?? defaultMusic)
   // Set once the bed or the levels differ from what is baked into the file on disk.
   const [dirty, setDirty] = useState(false)
-  const [jobId, setJobId] = useState<string | null>(null)
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
+  const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
 
   const preview = useQuery({
     queryKey: ["clip-preview", clip.editPlanId],
@@ -177,31 +267,11 @@ function ClipDetail({
   })
   const rerender = useMutation({
     mutationFn: () => api.rerenderClip(clip.editPlanId!, { voiceVolume: voice, musicVolume: music }),
-    onSuccess: (job) => setJobId(job.id),
+    onSuccess: (started) => { setDirty(false); onRerender(clip.editPlanId!, started.id) },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
-  // A re-render runs on the server, so poll its job: without this there is no way to tell it finished.
-  const job = useQuery({
-    queryKey: ["clip-job", jobId],
-    queryFn: () => api.job(jobId!),
-    enabled: Boolean(jobId),
-    refetchInterval: 1500,
-  })
-  const status = job.data?.status
-  useEffect(() => {
-    if (!jobId || !isTerminal(status)) return
-    if (status === "Completed") {
-      toast.success("Re-render finished. It replaced the older cut of this clip.")
-      setDirty(false)
-      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId, "outputs"] })
-      queryClient.invalidateQueries({ queryKey: ["clip-preview", clip.editPlanId] })
-    } else if (status === "Failed") toast.error(job.data?.errorSummary || "The re-render failed.")
-    setJobId(null)
-  }, [jobId, status, job.data?.errorSummary, campaignId, clip.editPlanId, queryClient])
-  const running = Boolean(jobId) || rerender.isPending
+  const running = Boolean(job) || rerender.isPending
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const audioRef = useRef<HTMLAudioElement>(null)
   const companion = preview.data?.previewRelativePath
   const musicUrl = preview.data?.musicAssetId ? api.musicFileUrl(preview.data.musicAssetId) : null
   const musicStart = preview.data?.musicStartSeconds ?? 0
@@ -212,9 +282,9 @@ function ClipDetail({
   // Sliders drive the elements directly, so the balance changes while it plays - no re-render.
   useEffect(() => {
     if (!canLiveMix) return
-    if (videoRef.current) videoRef.current.volume = Math.min(1, voice)
-    if (audioRef.current) audioRef.current.volume = Math.min(1, music)
-  }, [voice, music, canLiveMix, musicUrl])
+    if (videoEl) videoEl.volume = Math.min(1, voice)
+    if (audioEl) audioEl.volume = Math.min(1, music)
+  }, [voice, music, canLiveMix, musicUrl, videoEl, audioEl])
   const range = clipRange(clip)
   const tunable = Boolean(clip.style && clip.editPlanId)
 
@@ -223,18 +293,24 @@ function ClipDetail({
       <div className="flex flex-col gap-3">
         <div className="flex justify-center rounded-xl bg-[var(--surface-inverse)] p-2">
           <video
-            ref={videoRef}
+            ref={setVideoEl}
             className="max-h-[52vh] w-auto rounded-lg"
             src={videoSrc}
             controls
             preload="metadata"
             playsInline
-            onPlay={() => { if (canLiveMix && audioRef.current) { audioRef.current.currentTime = musicStart; audioRef.current.volume = Math.min(1, music); void audioRef.current.play().catch(() => {}) } }}
-            onPause={() => audioRef.current?.pause()}
-            onEnded={() => { if (audioRef.current) audioRef.current.pause() }}
-            onSeeked={() => { if (canLiveMix && audioRef.current) audioRef.current.currentTime = musicStart + (videoRef.current?.currentTime ?? 0) }}
+            onPlay={() => {
+              if (canLiveMix && audioEl) {
+                audioEl.currentTime = musicStart
+                audioEl.volume = Math.min(1, music)
+                void audioEl.play().catch(() => {})
+              }
+            }}
+            onPause={() => audioEl?.pause()}
+            onEnded={() => audioEl?.pause()}
+            onSeeked={() => { if (canLiveMix && audioEl && videoEl) audioEl.currentTime = musicStart + videoEl.currentTime }}
           />
-          {canLiveMix && musicUrl ? <audio ref={audioRef} src={musicUrl} loop preload="auto" /> : null}
+          {canLiveMix && musicUrl ? <audio ref={setAudioEl} src={musicUrl} loop preload="auto" /> : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => reveal.mutate()} disabled={reveal.isPending}>
@@ -266,14 +342,14 @@ function ClipDetail({
                 disabled={chooseMusic.isPending || running || songs.length === 0}
               >
                 <SelectTrigger id={`song-${clip.editPlanId}`} className="w-full">
-                  <SelectValue placeholder={assets.isLoading ? "Loading songs…" : "Pick a song"} />
+                  <SelectValue placeholder={assets.isLoading ? "Loading songs..." : "Pick a song"} />
                 </SelectTrigger>
                 <SelectContent>
                   {songs.map((song) => <SelectItem key={song.id} value={song.id}>{song.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <p className="mt-1 text-[10px] text-[var(--fg-muted)]">
-                Each song enters at its own marked segment. Don’t like the pick? Choose another and press play.
+                Each song enters at its own marked segment. Not the right pick? Choose another and press play.
               </p>
             </div>
 
@@ -294,25 +370,15 @@ function ClipDetail({
 
             <p className="text-[10px] text-[var(--fg-muted)]">
               {canLiveMix
-                ? "Play the clip and drag — you hear the balance change live (approximate). Re-render to bake it in."
+                ? "Play the clip and drag - you hear the balance change live (approximate). Re-render to bake it in."
                 : "Re-render to apply these levels (live preview appears after the next re-render)."}
             </p>
 
-            {running ? (
-              <div className="space-y-1.5 rounded-lg bg-[var(--surface-subtle)] p-2.5">
-                <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--fg-strong)]">
-                  <span className="flex items-center gap-1.5">
-                    <RefreshCw className="size-3.5 animate-spin" />
-                    {status === "Queued" ? "Waiting for a slot…" : "Re-rendering…"}
-                  </span>
-                  <span className="tabular-nums">{Math.round(job.data?.progress ?? 0)}%</span>
-                </div>
-                <Progress value={job.data?.progress ?? 0} />
-                <p className="text-[10px] text-[var(--fg-muted)]">This takes a couple of minutes. You can keep working.</p>
-              </div>
-            ) : (
-              <Button className="w-full" variant={dirty ? "default" : "outline"} size="sm" onClick={() => rerender.mutate()}>
-                <RefreshCw /> {dirty ? "Re-render with these changes" : "Re-render"}
+            {job ? <RerenderProgress job={job} /> : (
+              <Button className="w-full" variant={dirty ? "default" : "outline"} size="sm"
+                disabled={rerender.isPending} onClick={() => rerender.mutate()}>
+                <RefreshCw className={rerender.isPending ? "animate-spin" : undefined} />
+                {dirty ? "Re-render with these changes" : "Re-render"}
               </Button>
             )}
           </div>
@@ -328,19 +394,52 @@ function ClipDetail({
   )
 }
 
-export function RenderedClipsCard({ campaignId, defaultVoice = 1, defaultMusic = 0.2, musicLocationId, excludedMusic }: {
-  campaignId: string; defaultVoice?: number; defaultMusic?: number
-  musicLocationId?: string | null; excludedMusic?: string[] | null
-}) {
+export function RenderedClipsCard({ campaignId, editStyle }: { campaignId: string; editStyle?: CampaignEditStyle | null }) {
   const queryClient = useQueryClient()
   const [openPath, setOpenPath] = useState<string | null>(null)
+  const [openTitle, setOpenTitle] = useState<string | null>(null)
+  // Re-renders are tracked HERE, not inside the dialog: closing the dialog must not lose sight of a
+  // job that is still running on the server. Keyed by the plan that was re-rendered.
+  const [renderJobs, setRenderJobs] = useState<Record<string, string>>({})
+  const watching = Object.keys(renderJobs).length > 0
+
   const clips = useQuery({
     queryKey: ["campaign", campaignId, "outputs"],
     queryFn: () => api.renderedClips(campaignId),
     refetchInterval: 20_000,
   })
+  // One poll covers every clip being re-rendered at once.
+  const jobs = useQuery({
+    queryKey: ["campaign", campaignId, "rerender-jobs"],
+    queryFn: () => api.jobs(40),
+    enabled: watching,
+    refetchInterval: watching ? 1500 : false,
+  })
+  const jobById = useMemo(() => new Map((jobs.data ?? []).map((job) => [job.id, job])), [jobs.data])
+
+  useEffect(() => {
+    const finished = Object.entries(renderJobs).filter(([, jobId]) => isTerminal(jobById.get(jobId)?.status))
+    if (finished.length === 0) return
+    for (const [, jobId] of finished) {
+      const job = jobById.get(jobId)!
+      if (job.status === "Completed") toast.success("Re-render finished. It replaced the older cut of this clip.")
+      else if (job.status === "Failed") toast.error(job.errorSummary || "The re-render failed. The older cut was kept.")
+    }
+    setRenderJobs((current) => {
+      const next = { ...current }
+      for (const [planId] of finished) delete next[planId]
+      return next
+    })
+    queryClient.invalidateQueries({ queryKey: ["campaign", campaignId, "outputs"] })
+    queryClient.invalidateQueries({ queryKey: ["clip-preview"] })
+  }, [jobById, renderJobs, campaignId, queryClient])
+
   const paged = usePagination(clips.data ?? [], CLIPS_PER_PAGE, campaignId)
-  const open = clips.data?.find((clip) => clip.relativePath === openPath) ?? null
+  // A finished re-render replaces the file, so the path we opened disappears. Fall back to the clip
+  // with the same title - the replacement - rather than snapping the dialog shut mid-review.
+  const open = clips.data?.find((clip) => clip.relativePath === openPath)
+    ?? (openTitle ? clips.data?.find((clip) => clip.title === openTitle) : undefined)
+    ?? null
 
   const copyFolder = async () => {
     const first = clips.data?.[0]
@@ -361,6 +460,7 @@ export function RenderedClipsCard({ campaignId, defaultVoice = 1, defaultMusic =
           <div className="mb-2 flex items-center gap-2">
             <CardTitle>Rendered clips</CardTitle>
             {clips.data?.length ? <Badge variant="success">{clips.data.length}</Badge> : null}
+            {watching ? <Badge variant="warning">{Object.keys(renderJobs).length} re-rendering</Badge> : null}
           </div>
           <CardDescription>Every finished edit in this campaign. Click one to play it, swap its song or re-cut the mix.</CardDescription>
         </div>
@@ -373,13 +473,20 @@ export function RenderedClipsCard({ campaignId, defaultVoice = 1, defaultMusic =
         </div>
       </CardHeader>
       <CardContent>
+        <DefaultVolumes campaignId={campaignId} editStyle={editStyle} />
         {clips.isLoading ? (
-          <p className="py-6 text-center text-sm text-[var(--fg-muted)]">Loading clips…</p>
+          <p className="py-6 text-center text-sm text-[var(--fg-muted)]">Loading clips...</p>
         ) : clips.data?.length ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {paged.items.map((clip) => (
-                <ClipTile key={clip.relativePath} campaignId={campaignId} clip={clip} onOpen={() => setOpenPath(clip.relativePath)} />
+                <ClipTile
+                  key={clip.relativePath}
+                  campaignId={campaignId}
+                  clip={clip}
+                  job={clip.editPlanId ? jobById.get(renderJobs[clip.editPlanId]) : undefined}
+                  onOpen={() => { setOpenPath(clip.relativePath); setOpenTitle(clip.title ?? null) }}
+                />
               ))}
             </div>
             <Pagination className="px-0 pb-0" page={paged.page} pageCount={paged.pageCount} total={paged.total} from={paged.from} to={paged.to} onPageChange={paged.setPage} noun="clips" />
@@ -393,7 +500,7 @@ export function RenderedClipsCard({ campaignId, defaultVoice = 1, defaultMusic =
         )}
       </CardContent>
 
-      <Dialog open={Boolean(open)} onOpenChange={(next) => { if (!next) setOpenPath(null) }}>
+      <Dialog open={Boolean(open)} onOpenChange={(next) => { if (!next) { setOpenPath(null); setOpenTitle(null) } }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="pr-6 text-base leading-snug">{open?.title || open?.fileName}</DialogTitle>
@@ -403,11 +510,13 @@ export function RenderedClipsCard({ campaignId, defaultVoice = 1, defaultMusic =
               key={open.relativePath}
               campaignId={campaignId}
               clip={open}
-              defaultVoice={defaultVoice}
-              defaultMusic={defaultMusic}
-              musicLocationId={musicLocationId}
-              excludedMusic={excludedMusic}
-              onClose={() => setOpenPath(null)}
+              defaultVoice={editStyle?.voiceVolume ?? 1}
+              defaultMusic={editStyle?.musicVolume ?? 0.2}
+              musicLocationId={editStyle?.musicLocationId}
+              excludedMusic={editStyle?.excludedMusic}
+              job={open.editPlanId ? jobById.get(renderJobs[open.editPlanId]) : undefined}
+              onRerender={(planId, jobId) => setRenderJobs((current) => ({ ...current, [planId]: jobId }))}
+              onClose={() => { setOpenPath(null); setOpenTitle(null) }}
             />
           ) : null}
         </DialogContent>
