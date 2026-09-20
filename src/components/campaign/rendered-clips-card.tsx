@@ -191,9 +191,7 @@ function ClipDetail({
   useEffect(() => {
     if (!jobId || !isTerminal(status)) return
     if (status === "Completed") {
-      // A re-render builds a fresh clip rather than overwriting this one, so say so: the old cut is
-      // still in the list and picking the wrong one to upload would be easy otherwise.
-      toast.success("Re-render finished. It was added as a new clip — the older cut is still in the list.")
+      toast.success("Re-render finished. It replaced the older cut of this clip.")
       setDirty(false)
       queryClient.invalidateQueries({ queryKey: ["campaign", campaignId, "outputs"] })
       queryClient.invalidateQueries({ queryKey: ["clip-preview", clip.editPlanId] })
