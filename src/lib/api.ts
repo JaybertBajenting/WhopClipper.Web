@@ -1,9 +1,11 @@
 import axios, { AxiosError } from "axios"
 import { formatPayout } from "@/lib/utils"
 import type {
-  AiAnalysis, AiMode, AiProviderStatus, AppSettings, CampaignBranding, CampaignDetail, CampaignDocument, CampaignStatus, CampaignSummary,
-  DashboardSummary, EditPlan, Job, JobStatus, MediaAsset, MediaLocation, Platform, PlatformProfile, ReferenceVideo,
-  RequirementItem, RequirementRevision, SourceAsset, SystemDependency,
+  AiAnalysis, AiMode, AiProviderStatus, AppSettings, CampaignBranding, CampaignDetail, CampaignEditStyle, CampaignDocument, CampaignStatus, CampaignSummary,
+  AccountKit, BrollRepairCandidate, CreatePublishJobInput, DashboardSummary, EditPlan, Job, JobStatus, MediaAsset, MediaLocation, Platform, PlatformGuide,
+  PlatformProfile, PublishingConnectionInput, PublishingConnectionStatus, PublishingPlatform, PublishingSession, PublishJob, PublishStatus, ReferenceVideo,
+  RequirementItem, RequirementRevision, SourceAsset, SystemDependency, YouTubeOAuthStart,
+  PhoneNotificationSettings, YouTubeSchedule, YouTubeScheduleSettings,
 } from "@/lib/types"
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5080/api"
@@ -30,11 +32,27 @@ http.interceptors.response.use((response) => response, (error: AxiosError<{ titl
   const body = error.response?.data
   const validation = body?.errors ? Object.values(body.errors).flat().join(" ") : undefined
   const offline = !error.response && error.code !== "ECONNABORTED"
-  const message = offline ? "The local API is not reachable. Start ClipForge or the .NET backend and try again." : validation || body?.detail || body?.message || body?.error || body?.title || error.message
+  const message = offline ? "The local API is not reachable. Start Whop Clipper or the .NET backend and try again." : validation || body?.detail || body?.message || body?.error || body?.title || error.message
   return Promise.reject(new ApiError(message, error.response?.status, body?.detail))
 })
 
 function data<T>(promise: Promise<{ data: T }>) { return promise.then((response) => response.data) }
+let publishingSessionRequest: Promise<PublishingSession> | null = null
+function getPublishingSession(refresh = false) {
+  if (refresh || !publishingSessionRequest) publishingSessionRequest = data(http.get<PublishingSession>("/publishing/session"))
+  return publishingSessionRequest
+}
+async function publishingWrite<T>(request: (headers: Record<string, string>) => Promise<{ data: T }>) {
+  const run = async (refresh: boolean) => {
+    const session = await getPublishingSession(refresh)
+    return data(request({ [session.headerName]: session.nonce }))
+  }
+  try { return await run(false) }
+  catch (error) {
+    if (error instanceof ApiError && error.status === 403) return run(true)
+    throw error
+  }
+}
 function humanize(value: string) { return value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) }
 function aspectRatio(width: number, height: number) { const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a; const divisor = gcd(width, height); return `${width / divisor}:${height / divisor}` }
 function safeResult(value?: string | null): Record<string, unknown> { try { return value ? JSON.parse(value) as Record<string, unknown> : {} } catch { return {} } }
@@ -60,12 +78,12 @@ function aiRecommendation(value: unknown): NonNullable<import("@/lib/types").Hig
 interface ApiRequirementItem { id: string; category: string; key: string; value: string; sourceText: string; confidence: number; needsReview: boolean }
 interface ApiRequirementRevision { id: string; version: number; isApproved: boolean; createdAt: string; approvedAt?: string | null; items: ApiRequirementItem[] }
 interface ApiPlatformProfile { id: string; platform: Platform; enabled: boolean; width: number; height: number; minDurationSeconds: number; preferredDurationSeconds: number; maxDurationSeconds: number; maxFileSizeBytes?: number | null; captionTemplate: string; requiredHashtags: string[]; requiredMentions: string[]; disclosureText?: string | null; callToAction?: string | null; burnSubtitles: boolean; safeAreaNotes: string; complianceChecklist: string[]; valueOrigins: Record<string, string>; updatedAt: string }
-interface ApiSource { isLocalFile?: boolean; id: string; url: string; title?: string | null; uploader?: string | null; durationSeconds?: number | null; thumbnailUrl?: string | null; localRelativePath?: string | null; subtitleRelativePath?: string | null; status?: string | null; createdAt: string; downloadedAt?: string | null }
+interface ApiSource { isLocalFile?: boolean; publishedOn?: string | null; id: string; url: string; title?: string | null; uploader?: string | null; durationSeconds?: number | null; isVideo?: boolean; fileSizeBytes?: number | null; thumbnailUrl?: string | null; localRelativePath?: string | null; subtitleRelativePath?: string | null; status?: string | null; createdAt: string; downloadedAt?: string | null }
 interface ApiCampaignSummary { id: string; name: string; brand?: string | null; status: CampaignStatus; updatedAt: string; sourceCount: number; platformCount: number; latestRequirementVersion?: number | null; campaignType?: string | null; category?: string | null; payoutAmount?: number | null; payoutPerViews?: number | null; payoutUnit?: string | null; deadline?: string | null; whopUrl?: string | null }
 interface ApiCampaignDocument { id: string; fileName: string; kind: CampaignDocument["kind"]; sizeBytes: number; pageCount?: number | null; extractedCharacterCount: number; extractionStatus: CampaignDocument["extractionStatus"]; extractionError?: string | null; includeInExtraction: boolean; relativePath: string; uploadedAt: string }
 interface ApiReferenceVideo { id: string; label: string; url?: string | null; localRelativePath?: string | null; notes?: string | null; isPrimary: boolean; durationSeconds?: number | null; status: ReferenceVideo["status"]; error?: string | null; styleProfile?: unknown; createdAt: string; analyzedAt?: string | null }
-interface ApiCampaignDetail { id: string; name: string; whopUrl?: string | null; campaignType: string; brand?: string | null; category?: string | null; payoutAmount?: number | null; payoutPerViews?: number | null; payoutUnit?: string | null; deadline?: string | null; rawInstructions: string; notes?: string | null; status: CampaignStatus; createdAt: string; updatedAt: string; requirementRevisions: ApiRequirementRevision[]; platformProfiles: ApiPlatformProfile[]; sources: ApiSource[]; documents?: ApiCampaignDocument[]; referenceVideos?: ApiReferenceVideo[]; branding?: CampaignBranding | null }
-interface ApiJob { id: string; campaignId?: string | null; campaignName?: string | null; kind: string; status: JobStatus; progress: number; resultJson?: string | null; result?: Record<string, unknown> | null; error?: string | null; exitCode?: number | null; attempt: number; createdAt: string; startedAt?: string | null; completedAt?: string | null }
+interface ApiCampaignDetail { id: string; name: string; whopUrl?: string | null; campaignType: string; brand?: string | null; category?: string | null; payoutAmount?: number | null; payoutPerViews?: number | null; payoutUnit?: string | null; deadline?: string | null; rawInstructions: string; notes?: string | null; status: CampaignStatus; createdAt: string; updatedAt: string; requirementRevisions: ApiRequirementRevision[]; platformProfiles: ApiPlatformProfile[]; sources: ApiSource[]; documents?: ApiCampaignDocument[]; referenceVideos?: ApiReferenceVideo[]; branding?: CampaignBranding | null; editStyle?: CampaignEditStyle | null }
+interface ApiJob { id: string; campaignId?: string | null; campaignName?: string | null; subjectName?: string | null; kind: string; status: JobStatus; progress: number; resultJson?: string | null; result?: Record<string, unknown> | null; error?: string | null; exitCode?: number | null; attempt: number; createdAt: string; startedAt?: string | null; completedAt?: string | null }
 interface ApiOverlay { text: string; startSeconds: number; endSeconds: number; position: string; fontSize: number; color: string }
 interface ApiEditPlan { id: string; campaignId: string; sourceAssetId: string; platform: Platform; startSeconds: number; endSeconds: number; width: number; height: number; framesPerSecond: number; crf: number; normalizeAudio: boolean; burnSubtitles: boolean; subtitleRelativePath?: string | null; musicAssetId?: string | null; musicVolume: number; outputFileName: string; isApproved: boolean; framing?: string | null; ctaOverlayText?: string | null; subtitleStyle?: string | null; musicDuckingDb?: number | null; soundEffects?: Array<{ assetId: string; atSeconds: number; gainDb: number }>; overlays?: ApiOverlay[]; createdAt: string }
 interface ApiHighlight { id: string; provider: string; rank: number; startSeconds: number; endSeconds: number; hook: string; rationale: string; score: number; confidence: number; isSelected: boolean; editPlan?: unknown; editPlanJson?: string }
@@ -78,11 +96,11 @@ interface ApiDashboard { campaignCounts?: { total: number; draft: number; ready:
 function mapRequirementItem(item: ApiRequirementItem): RequirementItem { return { ...item, label: humanize(item.key), origin: "Extracted" } }
 function mapRevision(revision: ApiRequirementRevision): RequirementRevision { return { id: revision.id, version: revision.version, status: revision.isApproved ? "Approved" : "Draft", approvedAt: revision.approvedAt, createdAt: revision.createdAt, items: revision.items.map(mapRequirementItem) } }
 function mapProfile(profile: ApiPlatformProfile): PlatformProfile { return { id: profile.id, platform: profile.platform, enabled: profile.enabled, width: profile.width, height: profile.height, aspectRatio: aspectRatio(profile.width, profile.height), minDurationSeconds: profile.minDurationSeconds, preferredDurationSeconds: profile.preferredDurationSeconds, maxDurationSeconds: profile.maxDurationSeconds, maxFileSizeMb: profile.maxFileSizeBytes == null ? null : profile.maxFileSizeBytes / 1024 ** 2, captionTemplate: profile.captionTemplate, hashtags: profile.requiredHashtags ?? [], mentions: profile.requiredMentions ?? [], disclosure: profile.disclosureText, cta: profile.callToAction, burnSubtitles: profile.burnSubtitles, subtitleStyle: profile.burnSubtitles ? "Campaign subtitle style" : "", safeAreaNotes: profile.safeAreaNotes, complianceChecklist: profile.complianceChecklist ?? [], valueOrigins: profile.valueOrigins ?? {}, origin: Object.keys(profile.valueOrigins ?? {}).length ? "Extracted" : "Default" } }
-function mapSource(source: ApiSource): SourceAsset { return { id: source.id, url: source.url, isLocalFile: source.isLocalFile ?? !source.url, title: source.title || source.url || "Local file", status: source.status || (source.localRelativePath ? "Downloaded" : source.title ? "Inspected" : "Pending"), durationSeconds: source.durationSeconds, uploader: source.uploader, thumbnailUrl: source.thumbnailUrl, localPath: source.localRelativePath, subtitleRelativePath: source.subtitleRelativePath, createdAt: source.createdAt } }
+function mapSource(source: ApiSource): SourceAsset { return { id: source.id, url: source.url, isLocalFile: source.isLocalFile ?? !source.url, title: source.title || source.url || "Local file", status: source.status || (source.localRelativePath ? "Downloaded" : source.title ? "Inspected" : "Pending"), durationSeconds: source.durationSeconds, isVideo: source.isVideo ?? (source.durationSeconds ?? 0) > 0, fileSizeBytes: source.fileSizeBytes, uploader: source.uploader, thumbnailUrl: source.thumbnailUrl, localPath: source.localRelativePath, subtitleRelativePath: source.subtitleRelativePath, createdAt: source.createdAt, publishedOn: source.publishedOn } }
 function mapSummary(campaign: ApiCampaignSummary): CampaignSummary { return { ...campaign, brand: campaign.brand, updatedAt: campaign.updatedAt, payout: formatPayout(campaign.payoutAmount, campaign.payoutPerViews, campaign.payoutUnit) } }
 function mapDocument(document: ApiCampaignDocument): CampaignDocument { return { id: document.id, fileName: document.fileName, kind: document.kind, sizeBytes: document.sizeBytes, pageCount: document.pageCount, extractedCharacterCount: document.extractedCharacterCount, extractionStatus: document.extractionStatus, extractionError: document.extractionError, includeInExtraction: document.includeInExtraction, relativePath: document.relativePath, uploadedAt: document.uploadedAt } }
 function mapReference(reference: ApiReferenceVideo): ReferenceVideo { const profile = reference.styleProfile && typeof reference.styleProfile === "object" ? reference.styleProfile as ReferenceVideo["styleProfile"] : null; return { id: reference.id, label: reference.label, url: reference.url, localRelativePath: reference.localRelativePath, notes: reference.notes, isPrimary: reference.isPrimary, durationSeconds: reference.durationSeconds, status: reference.status, error: reference.error, styleProfile: profile, createdAt: reference.createdAt, analyzedAt: reference.analyzedAt } }
-function mapJob(job: ApiJob): Job { const result = job.result ?? safeResult(job.resultJson); const progress = job.progress <= 1 ? job.progress * 100 : job.progress; return { id: job.id, campaignId: job.campaignId, campaignName: job.campaignName, type: job.kind, status: job.status, progress, message: job.error || (job.status === "Running" ? `${humanize(job.kind)} in progress` : undefined), errorSummary: job.error, resultJson: job.resultJson, outputPath: typeof result.outputRelativePath === "string" ? result.outputRelativePath : undefined, createdAt: job.createdAt, startedAt: job.startedAt, completedAt: job.completedAt } }
+function mapJob(job: ApiJob): Job { const result = job.result ?? safeResult(job.resultJson); const progress = job.progress <= 1 ? job.progress * 100 : job.progress; return { id: job.id, campaignId: job.campaignId, campaignName: job.campaignName, subjectName: job.subjectName, type: job.kind, status: job.status, progress, message: job.error || (job.status === "Running" ? `${humanize(job.kind)} in progress` : undefined), errorSummary: job.error, resultJson: job.resultJson, outputPath: typeof result.outputRelativePath === "string" ? result.outputRelativePath : undefined, createdAt: job.createdAt, startedAt: job.startedAt, completedAt: job.completedAt } }
 function mapEditPlan(plan: ApiEditPlan): EditPlan { return { id: plan.id, name: plan.outputFileName.replace(/\.mp4$/i, ""), campaignId: plan.campaignId, sourceAssetId: plan.sourceAssetId, platform: plan.platform, startSeconds: plan.startSeconds, endSeconds: plan.endSeconds, width: plan.width, height: plan.height, fps: plan.framesPerSecond, framing: plan.framing || "CenterCrop", subtitleEnabled: plan.burnSubtitles, subtitleStyle: plan.subtitleStyle ?? "", subtitleRelativePath: plan.subtitleRelativePath, musicAssetId: plan.musicAssetId, musicVolume: plan.musicVolume, normalizeAudio: plan.normalizeAudio, musicDuckingDb: plan.musicDuckingDb ?? -12, soundEffects: plan.soundEffects ?? [], overlays: (plan.overlays ?? []).map((overlay) => ({ type: "Text", text: overlay.text, atSeconds: overlay.startSeconds, endSeconds: overlay.endSeconds, position: overlay.position, fontSize: overlay.fontSize, color: overlay.color })), status: plan.isApproved ? "Approved" : "Draft" } }
 function mapAnalysis(run: ApiAnalysis): AiAnalysis { return { id: run.id, sourceAssetId: run.sourceAssetId, mode: run.mode, status: run.status as JobStatus, createdAt: run.createdAt, sharedContextSummary: run.error || undefined, providerRuns: run.providers.map((provider) => ({ provider, status: run.status as JobStatus, candidateCount: run.highlights.filter((item) => item.provider === provider).length })), candidates: run.highlights.map((item) => ({ id: item.id, rank: item.rank, title: item.hook.slice(0, 72) || `${item.provider} highlight ${item.rank}`, startSeconds: item.startSeconds, endSeconds: item.endSeconds, hook: item.hook, rationale: item.rationale, confidence: item.confidence, campaignFit: item.score, retentionPotential: item.score, provider: item.provider, editRecommendation: aiRecommendation(item.editPlan ?? item.editPlanJson) })) } }
 function mapMediaAsset(asset: ApiMediaAsset): MediaAsset { return { id: asset.id, locationId: asset.locationId, name: asset.fileName, path: asset.fileName, type: asset.kind, durationSeconds: asset.durationSeconds, mood: asset.mood, energy: asset.energy, genre: asset.genre, bpm: asset.bpm, tags: asset.tags ?? [], favorite: asset.favorite, licenseNotes: asset.licenseNotes, hash: asset.contentHash, sizeBytes: asset.sizeBytes } }
@@ -121,7 +139,7 @@ export const api = {
   campaigns: async (includeArchived = false) => (await data(http.get<ApiCampaignSummary[]>("/campaigns", { params: { includeArchived } }))).map(mapSummary),
   campaign: async (id: string) => {
     const [campaign, plans, latestAnalysis] = await Promise.all([fetchCampaignRaw(id), data(http.get<ApiEditPlan[]>(`/campaigns/${id}/edit-plans`)), fetchLatestAnalysis(id)])
-    return { id: campaign.id, name: campaign.name, whopUrl: campaign.whopUrl, campaignType: campaign.campaignType, brand: campaign.brand, category: campaign.category, payout: formatPayout(campaign.payoutAmount, campaign.payoutPerViews, campaign.payoutUnit), payoutAmount: campaign.payoutAmount, payoutPerViews: campaign.payoutPerViews, payoutUnit: campaign.payoutUnit, deadline: campaign.deadline, rawInstructions: campaign.rawInstructions, notes: campaign.notes, status: campaign.status, createdAt: campaign.createdAt, updatedAt: campaign.updatedAt, requirements: (campaign.requirementRevisions ?? []).map(mapRevision), platformProfiles: (campaign.platformProfiles ?? []).map(mapProfile), sources: (campaign.sources ?? []).map(mapSource), documents: (campaign.documents ?? []).map(mapDocument), referenceVideos: (campaign.referenceVideos ?? []).map(mapReference), branding: campaign.branding ?? null, selectedAiMode: latestAnalysis?.mode ?? "Compare", latestAnalysis, editPlans: plans.map(mapEditPlan) } satisfies CampaignDetail
+    return { id: campaign.id, name: campaign.name, whopUrl: campaign.whopUrl, campaignType: campaign.campaignType, brand: campaign.brand, category: campaign.category, payout: formatPayout(campaign.payoutAmount, campaign.payoutPerViews, campaign.payoutUnit), payoutAmount: campaign.payoutAmount, payoutPerViews: campaign.payoutPerViews, payoutUnit: campaign.payoutUnit, deadline: campaign.deadline, rawInstructions: campaign.rawInstructions, notes: campaign.notes, status: campaign.status, createdAt: campaign.createdAt, updatedAt: campaign.updatedAt, requirements: (campaign.requirementRevisions ?? []).map(mapRevision), platformProfiles: (campaign.platformProfiles ?? []).map(mapProfile), sources: (campaign.sources ?? []).map(mapSource), documents: (campaign.documents ?? []).map(mapDocument), referenceVideos: (campaign.referenceVideos ?? []).map(mapReference), branding: campaign.branding ?? null, editStyle: campaign.editStyle ?? null, selectedAiMode: latestAnalysis?.mode ?? "Compare", latestAnalysis, editPlans: plans.map(mapEditPlan) } satisfies CampaignDetail
   },
   createCampaign: async (input: CreateCampaignInput) => {
     const campaign = await data(http.post<ApiCampaignDetail>("/campaigns", {
@@ -166,6 +184,12 @@ export const api = {
   importDetectedLinks: (campaignId: string, urls: string[], target: "source" | "reference", download = true) =>
     data(http.post<{ added: number; skipped: number; queued: number; errors: string[] }>(`/campaigns/${campaignId}/detected-links/import`, { urls, target, confirmedPermission: true, download })),
   campaignDocuments: async (campaignId: string) => (await data(http.get<ApiCampaignDocument[]>(`/campaigns/${campaignId}/documents`))).map(mapDocument),
+  // A brief published as a web page rather than sent as a file. The server reads the markup, not a
+  // screenshot, so every link keeps the address it was published with.
+  fetchBriefPage: async (campaignId: string, url: string) => {
+    const response = await data(http.post<{ document: ApiCampaignDocument; warning?: string | null }>(`/campaigns/${campaignId}/documents/fetch`, { url }, { timeout: 45_000 }))
+    return { document: mapDocument(response.document), warning: response.warning ?? null }
+  },
   uploadCampaignDocument: async (campaignId: string, file: File, onProgress?: (percent: number) => void) => {
     if (file.size > MAX_DOCUMENT_BYTES) throw new ApiError(`“${file.name}” is larger than the ${MAX_DOCUMENT_BYTES / 1024 ** 2} MB brief upload limit.`)
     const response = await data(http.post<{ document: ApiCampaignDocument; warning?: string | null }>(`/campaigns/${campaignId}/documents`, file, {
@@ -187,6 +211,59 @@ export const api = {
   updateCampaignBranding: (campaignId: string, branding: Pick<CampaignBranding, "position" | "widthFraction" | "marginFraction" | "opacity" | "enabled">) =>
     data(http.put<CampaignBranding>(`/campaigns/${campaignId}/branding`, branding)),
   deleteCampaignLogo: (campaignId: string) => data(http.delete<void>(`/campaigns/${campaignId}/branding/logo`)),
+  campaignEditStyle: (campaignId: string) => data(http.get<CampaignEditStyle>(`/campaigns/${campaignId}/edit-style`)),
+  updateCampaignEditStyle: (campaignId: string, style: CampaignEditStyle) =>
+    data(http.put<CampaignEditStyle>(`/campaigns/${campaignId}/edit-style`, style)),
+  /** Builds exactly these stories from one episode with the podcast-split edit. */
+  importStories: async (campaignId: string, input: { sourceAssetId?: string; url?: string; stories: Array<{ title: string; pieces: Array<{ startSeconds: number; endSeconds: number }> }> }) =>
+    mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/stories`, input))),
+  /** Re-render one podcast-split clip from its stored story. Pass volumes to override the campaign default for this clip. */
+  rerenderClip: async (editPlanId: string, volumes?: { voiceVolume?: number; musicVolume?: number }) =>
+    mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/rerender`, undefined, { params: volumes }))),
+  startBrollRepair: async (editPlanId: string, input: { startSeconds: number; endSeconds: number; note?: string }) =>
+    mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/broll-repairs`, input))),
+  brollRepairCandidate: (editPlanId: string, repairId: string) =>
+    data(http.get<BrollRepairCandidate>(`/edit-plans/${editPlanId}/broll-repairs/${repairId}`)),
+  applyBrollRepair: (editPlanId: string, repairId: string) =>
+    data(http.post<{ applied: boolean; archivedRelativePath: string; outputRelativePath: string }>(
+      `/edit-plans/${editPlanId}/broll-repairs/${repairId}/apply`)),
+  /** The B-roll editor's view of one clip: its lower-panel shots, the words spoken over them, and its footage bin. */
+  brollEditor: (editPlanId: string) => data(http.get<import("@/lib/types").BrollEditorData>(`/edit-plans/${editPlanId}/editor`)),
+  /** Downloads a pasted link into the campaign's footage, in the background. When footage already holds that stretch,
+   * nothing is downloaded: it comes back with `reused` and where in it the stretch starts. */
+  addFootage: async (editPlanId: string, input: { url: string; fromSeconds?: number; toSeconds?: number }) => {
+    const result = await data(http.post<{ footage: { id: string; title: string }; job: ApiJob | null; reused: boolean; inSeconds: number }>(
+      `/edit-plans/${editPlanId}/footage`, input))
+    return { footage: result.footage, job: result.job ? mapJob(result.job) : null, reused: result.reused, inSeconds: result.inSeconds }
+  },
+  /** Sends a footage video to the Recycle Bin. */
+  deleteFootage: (editPlanId: string, footageId: string) => data(http.delete<void>(`/edit-plans/${editPlanId}/footage/${footageId}`)),
+  footageUrl: (editPlanId: string, footageId: string) => `${API_BASE_URL}/edit-plans/${editPlanId}/footage/${footageId}/file`,
+  /** The narrator voice (ElevenLabs). The key itself is never returned, only a hint of which one is saved. */
+  voiceOver: () => data(http.get<import("@/lib/types").VoiceOverSettings>("/voice-over")),
+  /** Leave apiKey empty to keep the saved key. */
+  saveVoiceOver: (input: { apiKey?: string; voiceId?: string; modelId?: string }) =>
+    publishingWrite((headers) => http.put<import("@/lib/types").VoiceOverSettings>("/voice-over", input, { headers })),
+  /** Free: reads the voice's name, proving the key and voice id work. */
+  testVoiceOver: () => publishingWrite((headers) => http.post<{ voiceName: string }>("/voice-over/test", null, { headers })),
+  /** Spends a few credits: one line read in the saved voice, as MP3. */
+  voiceOverSample: () => publishingWrite((headers) => http.post<Blob>("/voice-over/sample", null,
+    { headers, responseType: "blob", timeout: 120_000 })),
+  /** Replaces a run of shots with footage picked from the bin. Returns a preview job, exactly like an AI repair. */
+  startBrollEdit: async (editPlanId: string, input: { startSeconds: number; endSeconds: number;
+    shots: Array<{ footageId: string; inSeconds: number; durationSeconds: number; framing: number }> }) =>
+    mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/broll-edits`, input))),
+  /** Music settings for the next render and whether the finished file is out of date. */
+  clipPreview: async (editPlanId: string) => data(http.get<{
+    campaignId: string; previewRelativePath: string | null; musicAssetId: string | null
+    musicStartSeconds: number; voiceVolume: number; musicVolume: number; musicNeedsRender: boolean
+  }>(`/edit-plans/${editPlanId}/preview`)),
+  /** URL that streams a music/sfx file for the in-browser preview mixer. */
+  musicFileUrl: (assetId: string) => `${API_BASE_URL}/media-library/assets/${assetId}/file`,
+  /** Point one clip at a chosen bed. Omit the start to enter at that song's own segment from the folder guide. */
+  setClipMusic: (editPlanId: string, musicAssetId: string | null, musicStartSeconds?: number | null) =>
+    data(http.put<{ musicAssetId: string | null; musicStartSeconds: number | null }>(
+      `/edit-plans/${editPlanId}/music`, { musicAssetId, musicStartSeconds: musicStartSeconds ?? null })),
   referenceVideos: async (campaignId: string) => (await data(http.get<ApiReferenceVideo[]>(`/campaigns/${campaignId}/reference-videos`))).map(mapReference),
   addReferenceVideo: async (campaignId: string, input: { url: string; label?: string; notes?: string; isPrimary?: boolean }) => {
     const response = await data(http.post<{ reference: ApiReferenceVideo; job: ApiJob } | ApiReferenceVideo>(`/campaigns/${campaignId}/reference-videos`, { url: input.url, label: input.label || null, notes: input.notes || null, isPrimary: input.isPrimary ?? false }))
@@ -217,6 +294,18 @@ export const api = {
   inspectSource: async (campaignId: string, url: string) => { const response = await data(http.post<{ source: ApiSource; job: ApiJob }>(`/campaigns/${campaignId}/sources/inspect`, { url })); return mapSource(response.source) },
   addSource: async (campaignId: string, url: string) => mapSource(await data(http.post<ApiSource>(`/campaigns/${campaignId}/sources`, { url }))),
   downloadSource: async (campaignId: string, sourceAssetId: string) => mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/downloads`, { sourceAssetId }))),
+  // Queues the whole download-to-clips pipeline for every source that has no clips yet. One job
+  // per source, run one at a time, each VOD deleted before the next is fetched.
+  autoRunCampaign: async (campaignId: string, dryRun = false) => {
+    const response = await data(http.post<{ queued: ApiJob[]; outstanding: string[]; notInspected: string[]; skipped: number; estimatedBytes: number; freeBytes: number; dryRun: boolean }>(`/campaigns/${campaignId}/auto-run`, { dryRun }))
+    return { queued: response.queued.map(mapJob), outstanding: response.outstanding ?? [], notInspected: response.notInspected ?? [], skipped: response.skipped, estimatedBytes: response.estimatedBytes, freeBytes: response.freeBytes, dryRun: response.dryRun }
+  },
+  // One source through the same download-to-clips pipeline that "Process all sources" runs.
+  // The body names only the source: StartSourcePipelineRequest and AutoRunCampaignRequest
+  // declare identical defaults for every shared field, so a source queued here runs on
+  // exactly the settings it would have got in a bulk run.
+  startSourcePipeline: async (campaignId: string, sourceAssetId: string) =>
+    (await data(http.post<ApiJob[]>(`/campaigns/${campaignId}/pipelines`, { sourceAssetIds: [sourceAssetId] }))).map(mapJob),
   startAnalysis: async (campaignId: string, sourceAssetId: string, mode: AiMode, platform: Platform, transcript?: string) => { const response = await data(http.post<{ analysisRunId: string; job: ApiJob }>(`/campaigns/${campaignId}/ai-analysis`, { sourceAssetId, mode, platform, transcript: transcript?.trim() || null })); return { id: response.analysisRunId, sourceAssetId, mode, platform, status: response.job.status, createdAt: response.job.createdAt, candidates: [] } satisfies AiAnalysis },
   analysis: async (id: string) => mapAnalysis(await data(http.get<ApiAnalysis>(`/ai-analysis/${id}`))),
   selectHighlight: (analysisId: string, highlightId: string) => data(http.post(`/ai-analysis/${analysisId}/select-highlight/${highlightId}`)),
@@ -225,13 +314,35 @@ export const api = {
   validateRender: async (renderId: string) => mapJob(await data(http.post<ApiJob>(`/renders/${renderId}/validate`))),
   renderedClips: (campaignId: string) => data(http.get<import("@/lib/types").RenderedClip[]>(`/campaigns/${campaignId}/outputs`)),
   revealOutput: (campaignId: string, path: string) => data(http.post<{ revealed: boolean; folder: string | null }>(`/campaigns/${campaignId}/outputs/reveal`, null, { params: { path } })),
+  /** Sends the clip and its preview to the Windows Recycle Bin. Refused while it is on the YouTube schedule. */
+  deleteOutput: (campaignId: string, path: string) => data(http.delete<void>(`/campaigns/${campaignId}/outputs`, { params: { path } })),
+  /** Uploads the clip to Google Drive, checks it there, then frees it on this PC. No timeout: a slow upload is still working. */
+  moveToDrive: (campaignId: string, path: string) =>
+    data(http.post<{ remote: string; movedAt: string; bytes: number }>(`/campaigns/${campaignId}/outputs/drive`, null, { params: { path }, timeout: 0 })),
+  /** What "Move campaign to Drive" would move for this campaign: its source videos and finished clips on this PC. */
+  driveUploadSummary: (campaignId: string) =>
+    data(http.get<import("@/lib/types").CampaignDriveUpload>(`/campaigns/${campaignId}/drive/upload`)),
+  /** Starts the background move of every source video and finished clip: each leaves this PC once checked in Drive. */
+  uploadCampaignToDrive: async (campaignId: string) => mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/drive/upload`))),
+  /** What "Bring campaign back from Drive" would fetch: every clip and source video the campaign moved there. */
+  driveReturnSummary: (campaignId: string) =>
+    data(http.get<import("@/lib/types").CampaignDriveReturn>(`/campaigns/${campaignId}/drive/return`)),
+  /** Starts fetching the whole campaign back from Google Drive in the background. The Drive copies stay. */
+  bringCampaignBackFromDrive: async (campaignId: string) => mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/drive/return`))),
+  /** Downloads a moved clip from Google Drive and checks it. The Drive copy stays. */
+  bringBackFromDrive: (campaignId: string, path: string) =>
+    data(http.post<void>(`/campaigns/${campaignId}/outputs/drive/return`, null, { params: { path }, timeout: 0 })),
   exportCampaign: (campaignId: string) => data(http.post<{ folderRelativePath: string; summaryRelativePath: string }>(`/campaigns/${campaignId}/exports`)),
-  jobs: async () => (await data(http.get<ApiJob[]>("/jobs"))).map(mapJob),
+  // The server caps this list; without a limit it silently truncates and the pager would then
+  // claim the last page is the last job. Keep the default in step with JOB_HISTORY_LIMIT.
+  jobs: async (limit = 200) => (await data(http.get<ApiJob[]>("/jobs", { params: { limit } }))).map(mapJob),
   job: async (id: string) => mapJob(await data(http.get<ApiJob>(`/jobs/${id}`))),
   cancelJob: async (id: string) => mapJob(await data(http.post<ApiJob>(`/jobs/${id}/cancel`))),
   retryJob: async (id: string) => mapJob(await data(http.post<ApiJob>(`/jobs/${id}/retry`))),
   settings: async () => mapSettings(await data(http.get<ApiSettings>("/settings"))),
   updateSettings: async (settings: AppSettings) => { await data(http.put("/settings", { workspaceRoot: settings.workspacePath, ytDlpPath: settings.ytDlpPath, ffmpegPath: settings.ffmpegPath, ffprobePath: settings.ffprobePath, claudePath: settings.claudePath, codexPath: settings.codexPath, processTimeoutMinutes: settings.aiTimeoutMinutes, defaultAiMode: settings.defaultAiMode, maxConcurrentMediaJobs: settings.maxConcurrentMediaJobs, requireEditApproval: settings.requireEditApproval, preferredVideoQuality: settings.preferredVideoQuality, cookiesFromBrowser: settings.cookiesFromBrowser || null, cookiesFilePath: settings.cookiesFilePath || null, jsRuntime: settings.jsRuntime || null })); return settings },
+  orphanedCampaignFolders: () => data(http.get<import("@/lib/types").OrphanedCampaignFolder[]>("/system/orphaned-campaign-folders")),
+  deleteOrphanedCampaignFolder: (folderName: string) => data(http.delete<{ deleted: boolean }>(`/system/orphaned-campaign-folders/${folderName}`)),
   dependencies: async () => (await data(http.get<Array<{ name: string; configuredPath: string; available: boolean; version?: string | null; error?: string | null }>>("/system/dependencies"))).map((item) => ({ name: item.name, path: item.configuredPath, available: item.available, version: item.version, detail: item.error } satisfies SystemDependency)),
   aiProviders: async () => (await data(http.get<Array<{ name: string; configuredPath: string; modes: string[] }>>("/ai/providers"))).map((item) => ({ provider: item.name, available: Boolean(item.configuredPath), path: item.configuredPath } as AiProviderStatus)),
   mediaLocations: async () => (await data(http.get<ApiMediaLocation[]>("/media-library/locations"))).map((location) => ({ id: location.id, path: location.path, type: location.kind, assetCount: undefined, lastScannedAt: location.createdAt } satisfies MediaLocation)),
@@ -239,6 +350,49 @@ export const api = {
   mediaAssets: async () => fetchMediaAssets(),
   updateMediaAsset: async (id: string, patch: Partial<MediaAsset>) => { const current = (await fetchMediaAssets()).find((asset) => asset.id === id); if (!current) throw new ApiError("Audio asset was not found.", 404); const updated = await data(http.put<ApiMediaAsset>(`/media-library/assets/${id}`, { tags: patch.tags ?? current.tags, mood: patch.mood ?? current.mood, energy: patch.energy ?? current.energy, genre: patch.genre ?? current.genre, bpm: patch.bpm ?? current.bpm, favorite: patch.favorite ?? current.favorite, licenseNotes: patch.licenseNotes ?? current.licenseNotes })); return mapMediaAsset(updated) },
   scanMediaLibrary: async () => { const result = await data(http.post<{ indexed: number }>("/media-library/scan")); return { id: `scan-${Date.now()}`, type: "MediaScan", status: "Completed", progress: 100, message: `${result.indexed} assets indexed`, createdAt: new Date().toISOString() } satisfies Job },
+  publishingGuides: () => data(http.get<PlatformGuide[]>("/publishing/platforms")),
+  publishingGuide: (platform: PublishingPlatform) => data(http.get<PlatformGuide>(`/publishing/platforms/${platform}`)),
+  publishingSession: () => getPublishingSession(),
+  accountKits: (campaignId: string) => data(http.get<AccountKit[]>(`/campaigns/${campaignId}/publishing/account-kits`)),
+  accountKit: (campaignId: string, platform: PublishingPlatform) => data(http.get<AccountKit>(`/campaigns/${campaignId}/publishing/account-kits/${platform}`)),
+  updateAccountKit: (campaignId: string, platform: PublishingPlatform, fields: Record<string, string>) =>
+    publishingWrite((headers) => http.put<AccountKit>(`/campaigns/${campaignId}/publishing/account-kits/${platform}`, { fields }, { headers })),
+  regenerateAccountKitIdentity: (campaignId: string, platform: PublishingPlatform) =>
+    publishingWrite((headers) => http.post<AccountKit>(`/campaigns/${campaignId}/publishing/account-kits/${platform}/regenerate-identity`, null, { headers })),
+  publishingConnections: () => data(http.get<PublishingConnectionStatus[]>("/publishing/connections")),
+  publishingConnection: (platform: PublishingPlatform) => data(http.get<PublishingConnectionStatus>(`/publishing/connections/${platform}`)),
+  updatePublishingConnection: (platform: PublishingPlatform, input: PublishingConnectionInput) =>
+    publishingWrite((headers) => http.put<PublishingConnectionStatus>(`/publishing/connections/${platform}`, input, { headers })),
+  disconnectPublishingConnection: (platform: PublishingPlatform) => publishingWrite((headers) => http.delete<void>(`/publishing/connections/${platform}`, { headers })),
+  validatePublishingConnection: (platform: PublishingPlatform) => publishingWrite((headers) => http.post<PublishingConnectionStatus>(`/publishing/connections/${platform}/validate`, null, { headers })),
+  startYouTubeOAuth: () => publishingWrite((headers) => http.post<YouTubeOAuthStart>("/publishing/connections/YouTubeShorts/oauth/start", {}, { headers })),
+  publishingJobs: (filters?: { campaignId?: string; platform?: PublishingPlatform; status?: PublishStatus }) =>
+    data(http.get<PublishJob[]>("/publishing/jobs", { params: filters })),
+  publishingJob: (id: string) => data(http.get<PublishJob>(`/publishing/jobs/${id}`)),
+  createPublishingJob: (campaignId: string, input: CreatePublishJobInput) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/campaigns/${campaignId}/publishing/jobs`, input, { headers })),
+  cancelPublishingJob: (id: string) => publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/cancel`, null, { headers })),
+  confirmInstagramPublishingJob: (id: string, idempotencyKey: string) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/confirm-instagram`, { confirmed: true, idempotencyKey }, { headers })),
+  completeManualPublishingJob: (id: string, postUrl: string) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/complete-manual`, { confirmed: true, postUrl }, { headers })),
+  youtubeSchedule: () => data(http.get<YouTubeSchedule>("/publishing/youtube-schedule")),
+  updateYouTubeScheduleSettings: (settings: Pick<YouTubeScheduleSettings, "slots" | "timeZoneId" | "uploadWindowHours">) =>
+    publishingWrite((headers) => http.put<YouTubeSchedule>("/publishing/youtube-schedule/settings", settings, { headers })),
+  /** Puts a rendered clip into the next free daily slot. YouTube makes it public at that time. */
+  scheduleOnYouTube: (campaignId: string, input: { outputRelativePath: string; editPlanId?: string | null; title: string; caption: string; idempotencyKey: string }) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/campaigns/${campaignId}/publishing/youtube-schedule`, { ...input, confirmed: true }, { headers })),
+  /** Deletes the upload (or cancels it before upload) and moves every later clip up one slot. */
+  unscheduleFromYouTube: (jobId: string) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${jobId}/unschedule`, { confirmed: true }, { headers })),
+  updatePhoneNotifications: (input: { enabled: boolean; server?: string; topic?: string }) =>
+    publishingWrite((headers) => http.put<PhoneNotificationSettings>("/publishing/notifications", input, { headers })),
+  testPhoneNotification: () => publishingWrite((headers) => http.post<{ sent: boolean }>("/publishing/notifications/test", null, { headers })),
+}
+
+/** Direct download URL for the TikTok handoff ZIP. The endpoint never contains credentials. */
+export function manualPublishingPackageUrl(jobId: string) {
+  return `${API_BASE_URL}/publishing/jobs/${encodeURIComponent(jobId)}/manual-package`
 }
 
 export function getErrorMessage(error: unknown) { return error instanceof Error ? error.message : "Something went wrong." }

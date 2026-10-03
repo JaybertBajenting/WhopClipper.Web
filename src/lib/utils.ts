@@ -29,6 +29,18 @@ export function formatDate(value?: string | null, includeTime = false) {
   }).format(date)
 }
 
+/**
+ * A calendar day such as "2026-09-15", shown as that same day everywhere. Read as a moment, a bare date is
+ * midnight UTC, which west of Greenwich would show as the day before.
+ */
+export function formatDay(value?: string | null) {
+  if (!value) return "—"
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return formatDate(value)
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(date)
+}
+
 export function toPercent(value?: number | null) {
   if (value == null) return "—"
   const normalized = value <= 1 ? value * 100 : value

@@ -10,6 +10,7 @@ import {
   HardDrive,
   Menu,
   Search,
+  Send,
   Settings2,
   Sparkles,
   X,
@@ -26,6 +27,7 @@ const navItems = [
   { to: "/campaigns", label: "Campaigns", icon: BriefcaseBusiness },
   { to: "/library", label: "Audio library", icon: AudioLines },
   { to: "/jobs", label: "Jobs", icon: HardDrive },
+  { to: "/publishing", label: "Publishing", icon: Send },
   { to: "/settings", label: "Settings", icon: Settings2 },
 ] as const
 
@@ -54,7 +56,7 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
     <aside className={cn("flex h-full w-[248px] flex-col bg-sidebar text-white", !mobile && "fixed inset-y-0 left-0 z-30 hidden lg:flex")}>
       <div className="flex h-[76px] items-center gap-3 px-6">
         <span className="grid size-9 place-items-center rounded-xl bg-brand text-[var(--on-brand)]"><Sparkles className="size-5" /></span>
-        <div><p className="text-[15px] font-black tracking-[0.12em]">CLIPFORGE</p><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-muted)]">Local studio</p></div>
+        <div><p className="text-[15px] font-black tracking-[0.08em]">WHOP CLIPPER</p><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--fg-muted)]">Local studio</p></div>
         {mobile && <button className="ml-auto rounded-lg p-2 text-[var(--fg-subtle)] hover:bg-white/10 hover:text-white" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="size-5" /></button>}
       </div>
       <div className="px-6 pb-3 pt-4 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--fg-body)]">Workspace</div>

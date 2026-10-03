@@ -4,6 +4,7 @@ import { Link, useNavigate } from "@tanstack/react-router"
 import { Archive, ArrowUpRight, Copy, Filter, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { api, getErrorMessage } from "@/lib/api"
+import { usePagination } from "@/lib/pagination"
 import type { CampaignSummary } from "@/lib/types"
 import { formatDate } from "@/lib/utils"
 import { CampaignFormDialog } from "@/components/campaign/campaign-form-dialog"
@@ -14,7 +15,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { EmptyState, ErrorState, LoadingPage, PageHeader } from "@/components/page"
+import { EmptyState, ErrorState, LoadingPage, PageHeader, Pagination } from "@/components/page"
 
 function CampaignRow({ campaign }: { campaign: CampaignSummary }) {
   const queryClient = useQueryClient()
@@ -60,6 +61,8 @@ function CampaignRow({ campaign }: { campaign: CampaignSummary }) {
   )
 }
 
+const CAMPAIGNS_PER_PAGE = 25
+
 export function CampaignsPage() {
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
@@ -67,6 +70,7 @@ export function CampaignsPage() {
   const [showArchived, setShowArchived] = useState(false)
   const campaigns = useQuery({ queryKey: ["campaigns", { showArchived }], queryFn: () => api.campaigns(showArchived), retry: 1 })
   const filtered = useMemo(() => (campaigns.data ?? []).filter((campaign) => `${campaign.name} ${campaign.brand ?? ""} ${campaign.category ?? ""}`.toLowerCase().includes(query.toLowerCase())), [campaigns.data, query])
+  const paged = usePagination(filtered, CAMPAIGNS_PER_PAGE, `${query}|${showArchived}`)
 
   return (
     <div className="animate-enter">
@@ -80,7 +84,7 @@ export function CampaignsPage() {
               <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--fg-muted)]" /><Input className="pl-9" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search campaigns…" aria-label="Search campaigns" /></div>
               <div className="flex items-center gap-2 rounded-lg border border-[var(--border-strong)] bg-panel px-3 py-2"><Filter className="size-4 text-[var(--fg-muted)]" /><Label htmlFor="archived" className="text-xs">Include archived</Label><Switch id="archived" checked={showArchived} onCheckedChange={setShowArchived} /></div>
             </div>
-            {filtered.length ? <div>{filtered.map((campaign) => <CampaignRow key={campaign.id} campaign={campaign} />)}</div> : <div className="p-5"><EmptyState title={query ? "No campaigns match" : "Create your first campaign"} description={query ? "Try a different campaign, brand, or category." : "Paste a campaign brief to create a structured, reviewable clipping workspace."} action={!query ? <Button variant="brand" onClick={() => setCreateOpen(true)}><Plus /> New campaign</Button> : undefined} /></div>}
+            {filtered.length ? <><div>{paged.items.map((campaign) => <CampaignRow key={campaign.id} campaign={campaign} />)}</div><Pagination page={paged.page} pageCount={paged.pageCount} total={paged.total} from={paged.from} to={paged.to} onPageChange={paged.setPage} noun="campaigns" /></> : <div className="p-5"><EmptyState title={query ? "No campaigns match" : "Create your first campaign"} description={query ? "Try a different campaign, brand, or category." : "Paste a campaign brief to create a structured, reviewable clipping workspace."} action={!query ? <Button variant="brand" onClick={() => setCreateOpen(true)}><Plus /> New campaign</Button> : undefined} /></div>}
           </CardContent>
         </Card>
       )}

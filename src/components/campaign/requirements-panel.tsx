@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { EmptyState } from "@/components/page"
 import { BrandingLogoCard } from "@/components/campaign/branding-logo-card"
+import { EditStyleCard } from "@/components/campaign/edit-style-card"
 import { BriefDocumentsCard } from "@/components/campaign/brief-documents-card"
 
 function RequirementEditor({ campaignId, revision }: { campaignId: string; revision: RequirementRevision }) {
@@ -84,6 +85,7 @@ export function RequirementsPanel({ campaign }: { campaign: CampaignDetail }) {
       </Card>
       <BriefDocumentsCard campaignId={campaign.id} documents={campaign.documents ?? []} />
       <BrandingLogoCard campaignId={campaign.id} branding={campaign.branding} />
+      <EditStyleCard campaignId={campaign.id} editStyle={campaign.editStyle} />
       {latestRevision ? <RequirementEditor key={latestRevision.id} campaignId={campaign.id} revision={latestRevision} /> : <EmptyState title="Ready to extract" description="The extractor reads the pasted brief plus any attached PDF or Word file, then identifies platforms, durations, captions, account rules, branding, rewards, and prohibited content." icon={<Sparkles className="size-6" />} action={<Button variant="brand" onClick={() => extract.mutate()} disabled={extract.isPending}><Sparkles /> Extract now</Button>} />}
     </div>
   )

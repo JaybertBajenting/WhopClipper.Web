@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { FileText, Info, Paperclip, Trash2, Upload } from "lucide-react"
+import { FileText, Globe, Info, LoaderCircle, Paperclip, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { ACCEPTED_DOCUMENT_TYPES, api, getErrorMessage, MAX_DOCUMENT_BYTES } from "@/lib/api"
 import type { CampaignDocument } from "@/lib/types"
@@ -9,10 +9,11 @@ import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 
-const kindLabels: Record<CampaignDocument["kind"], string> = { Pdf: "PDF", Word: "Word", Text: "Text", Markdown: "Markdown" }
+const kindLabels: Record<CampaignDocument["kind"], string> = { Pdf: "PDF", Word: "Word", Text: "Text", Markdown: "Markdown", Html: "Web page" }
 
 function DocumentRow({ campaignId, document }: { campaignId: string; document: CampaignDocument }) {
   const queryClient = useQueryClient()
@@ -28,8 +29,9 @@ function DocumentRow({ campaignId, document }: { campaignId: string; document: C
     onError: (error) => toast.error(getErrorMessage(error)),
   })
   const failed = document.extractionStatus === "Failed"
+  const page = document.kind === "Html"
   const details = [
-    formatBytes(document.sizeBytes),
+    page ? null : formatBytes(document.sizeBytes),
     document.pageCount ? `${document.pageCount} page${document.pageCount === 1 ? "" : "s"}` : null,
     failed ? null : `${document.extractedCharacterCount.toLocaleString()} characters extracted`,
     `Added ${formatDate(document.uploadedAt)}`,
@@ -37,7 +39,7 @@ function DocumentRow({ campaignId, document }: { campaignId: string; document: C
   return (
     <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-accent-subtle)] p-4">
       <div className="flex flex-wrap items-start gap-3">
-        <FileText className="mt-0.5 size-4 shrink-0 text-brand-dark" />
+        {page ? <Globe className="mt-0.5 size-4 shrink-0 text-brand-dark" /> : <FileText className="mt-0.5 size-4 shrink-0 text-brand-dark" />}
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{document.fileName}</span>
@@ -63,6 +65,19 @@ export function BriefDocumentsCard({ campaignId, documents }: { campaignId: stri
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<{ fileName: string; percent: number } | null>(null)
+  const [url, setUrl] = useState("")
+  const fetchPage = useMutation({
+    mutationFn: (value: string) => api.fetchBriefPage(campaignId, value),
+    onSuccess: (result) => {
+      if (result.warning) toast.warning(result.warning)
+      else toast.success(`${result.document.fileName} read — ${result.document.extractedCharacterCount.toLocaleString()} characters`)
+      setUrl("")
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] })
+      // The page's links become importable sources, so refresh that card too.
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId, "detected-links"] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
       const warnings: string[] = []
@@ -87,14 +102,26 @@ export function BriefDocumentsCard({ campaignId, documents }: { campaignId: stri
       <CardHeader className="flex-row items-start justify-between gap-4">
         <div>
           <CardTitle>Attached brief files</CardTitle>
-          <CardDescription>Upload the campaign PDF or Word brief instead of retyping it. Its text joins the pasted brief before extraction.</CardDescription>
+          <CardDescription>Point it at the campaign page, or upload the PDF. Either way the text joins the pasted brief before extraction.</CardDescription>
         </div>
         <Paperclip className="size-5 text-brand-dark" />
       </CardHeader>
       <CardContent>
         <input ref={inputRef} type="file" multiple className="hidden" accept={ACCEPTED_DOCUMENT_TYPES}
           onChange={(event) => { const files = Array.from(event.target.files ?? []); if (files.length) upload.mutate(files) }} />
-        <div className="flex flex-wrap items-center gap-3">
+        <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); if (url.trim()) fetchPage.mutate(url.trim()) }}>
+          <div className="relative flex-1">
+            <Globe className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--fg-muted)]" />
+            <Input className="pl-9" placeholder="https://reachclipping.com/…" aria-label="Campaign page address"
+              value={url} onChange={(event) => setUrl(event.target.value)} disabled={fetchPage.isPending} />
+          </div>
+          <Button type="submit" variant="brand" disabled={fetchPage.isPending || !url.trim()}>
+            {fetchPage.isPending ? <LoaderCircle className="animate-spin" /> : <Globe />} {fetchPage.isPending ? "Reading…" : "Read page"}
+          </Button>
+        </form>
+        <p className="mt-2 text-xs leading-relaxed text-[var(--fg-muted)]">Reads the page itself, so every link keeps the exact address it was published with and sections you never scrolled to are captured too. Pages that build their content with JavaScript, or sit behind a login, need the brief pasted instead.</p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[var(--border-default)] pt-4">
           <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={upload.isPending}>
             <Upload /> {upload.isPending ? "Uploading…" : "Upload brief file"}
           </Button>
