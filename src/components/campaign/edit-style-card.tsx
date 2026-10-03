@@ -23,11 +23,13 @@ export function EditStyleCard({ campaignId, editStyle }: { campaignId: string; e
   if (signature !== syncedSignature) { setSyncedSignature(signature); setDraft(editStyle ?? DEFAULT_EDIT_STYLE) }
   const dirty = editStyleSignature(draft) !== signature
   const podcast = draft.style === "PodcastSplit"
+  const narrated = draft.style === "NarratedLuxury"
 
   const save = useMutation({
     mutationFn: (next: CampaignEditStyle) => api.updateCampaignEditStyle(campaignId, next),
     onSuccess: (saved) => {
-      toast.success(saved.style === "PodcastSplit" ? "New clips will use the podcast split" : "New clips will use the streamer style")
+      toast.success(saved.style === "PodcastSplit" ? "New clips will use the podcast split"
+        : saved.style === "NarratedLuxury" ? "New clips will use the narrated luxury style" : "New clips will use the streamer style")
       queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] })
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -43,7 +45,7 @@ export function EditStyleCard({ campaignId, editStyle }: { campaignId: string; e
         <Clapperboard className="size-5 text-brand-dark" />
       </CardHeader>
       <CardContent>
-        <div role="radiogroup" aria-label="Edit style" className="grid gap-3 sm:grid-cols-2">
+        <div role="radiogroup" aria-label="Edit style" className="grid gap-3 sm:grid-cols-3">
           {EDIT_STYLE_OPTIONS.map((option) => {
             const selected = draft.style === option.value
             return (
@@ -53,7 +55,9 @@ export function EditStyleCard({ campaignId, editStyle }: { campaignId: string; e
                 role="radio"
                 aria-checked={selected}
                 disabled={save.isPending}
-                onClick={() => setDraft({ ...draft, style: option.value })}
+                // The narrated reference keeps its music loud, 2-5 dB under the voices; start there.
+                onClick={() => setDraft({ ...draft, style: option.value,
+                  musicVolume: option.value === "NarratedLuxury" && draft.musicVolume <= 0.2 ? 0.5 : draft.musicVolume })}
                 className={`rounded-xl border p-4 text-left transition-colors ${selected
                   ? "border-brand-dark bg-[var(--surface-accent-subtle)]"
                   : "border-[var(--border-default)] hover:border-[var(--border-strong)]"}`}
@@ -97,6 +101,38 @@ export function EditStyleCard({ campaignId, editStyle }: { campaignId: string; e
           </div>
         )}
 
+        {narrated && (
+          <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto]">
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[var(--fg-strong)]" htmlFor="narrated-voice-volume">
+                  Voices: {percent(draft.voiceVolume ?? 1)}
+                </label>
+                <input id="narrated-voice-volume" type="range" min={50} max={200} value={Math.round((draft.voiceVolume ?? 1) * 100)} className="w-full"
+                  onChange={(event) => setDraft({ ...draft, voiceVolume: Number(event.target.value) / 100 })} />
+                <p className="mt-1 text-xs text-[var(--fg-muted)]">The narrator and the vlog are each levelled; this moves both.</p>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[var(--fg-strong)]" htmlFor="narrated-music-volume">
+                  Music: {percent(draft.musicVolume)}
+                </label>
+                <input id="narrated-music-volume" type="range" min={0} max={100} value={Math.round(draft.musicVolume * 100)} className="w-full"
+                  onChange={(event) => setDraft({ ...draft, musicVolume: Number(event.target.value) / 100 })} />
+                <p className="mt-1 text-xs text-[var(--fg-muted)]">@mambafx.luxury keeps its music loud, only a little under the voices. 50% is about there.</p>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={draft.skullEnding ?? true} onChange={(event) => setDraft({ ...draft, skullEnding: event.target.checked })} />
+                <span><span className="font-semibold">Skull ending</span> <span className="text-xs text-[var(--fg-muted)]">Black-and-white freeze with a 💀 over the last face, as every reference short ends.</span></span>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={draft.soundEffects ?? true} onChange={(event) => setDraft({ ...draft, soundEffects: event.target.checked })} />
+                <span><span className="font-semibold">Sound effects</span> <span className="text-xs text-[var(--fg-muted)]">A bell when the arrow pops up, and a camera shutter on the flash where the narrator hands over.</span></span>
+              </label>
+            </div>
+            <NarratedPreview />
+          </div>
+        )}
+
         <div className="mt-4 flex items-center gap-3">
           <Button onClick={() => save.mutate(draft)} disabled={!dirty || save.isPending}>
             {save.isPending ? "Saving…" : "Save style"}
@@ -118,6 +154,20 @@ export function EditStyleCard({ campaignId, editStyle }: { campaignId: string; e
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** The narrated layout in proportion: black canvas, meme title on the window's top edge, one word in the window. */
+function NarratedPreview() {
+  return (
+    <div className="mx-auto flex w-[135px] flex-col">
+      <div className="relative h-[240px] w-[135px] overflow-hidden rounded-lg border border-[var(--border-default)] bg-black">
+        <div className="absolute inset-x-0 top-[15.5%] text-center text-[8px] font-bold text-white">POV: he did this 💀</div>
+        <div className="absolute inset-x-0 top-[18.8%] flex h-[59.8%] items-center justify-center bg-[var(--surface-accent-subtle)] text-[10px] font-semibold text-[var(--fg-muted)]">Vlog</div>
+        <div className="absolute inset-x-0 top-[44%] text-center text-[9px] font-bold text-[#3ce8f2]">millionaire</div>
+      </div>
+      <p className="mt-1.5 text-center text-[10px] text-[var(--fg-muted)]">9:16 · no watermark</p>
+    </div>
   )
 }
 

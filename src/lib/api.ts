@@ -2,9 +2,10 @@ import axios, { AxiosError } from "axios"
 import { formatPayout } from "@/lib/utils"
 import type {
   AiAnalysis, AiMode, AiProviderStatus, AppSettings, CampaignBranding, CampaignDetail, CampaignEditStyle, CampaignDocument, CampaignStatus, CampaignSummary,
-  AccountKit, CreatePublishJobInput, DashboardSummary, EditPlan, Job, JobStatus, MediaAsset, MediaLocation, Platform, PlatformGuide,
+  AccountKit, BrollRepairCandidate, CreatePublishJobInput, DashboardSummary, EditPlan, Job, JobStatus, MediaAsset, MediaLocation, Platform, PlatformGuide,
   PlatformProfile, PublishingConnectionInput, PublishingConnectionStatus, PublishingPlatform, PublishingSession, PublishJob, PublishStatus, ReferenceVideo,
   RequirementItem, RequirementRevision, SourceAsset, SystemDependency, YouTubeOAuthStart,
+  PhoneNotificationSettings, YouTubeSchedule, YouTubeScheduleSettings,
 } from "@/lib/types"
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:5080/api"
@@ -77,7 +78,7 @@ function aiRecommendation(value: unknown): NonNullable<import("@/lib/types").Hig
 interface ApiRequirementItem { id: string; category: string; key: string; value: string; sourceText: string; confidence: number; needsReview: boolean }
 interface ApiRequirementRevision { id: string; version: number; isApproved: boolean; createdAt: string; approvedAt?: string | null; items: ApiRequirementItem[] }
 interface ApiPlatformProfile { id: string; platform: Platform; enabled: boolean; width: number; height: number; minDurationSeconds: number; preferredDurationSeconds: number; maxDurationSeconds: number; maxFileSizeBytes?: number | null; captionTemplate: string; requiredHashtags: string[]; requiredMentions: string[]; disclosureText?: string | null; callToAction?: string | null; burnSubtitles: boolean; safeAreaNotes: string; complianceChecklist: string[]; valueOrigins: Record<string, string>; updatedAt: string }
-interface ApiSource { isLocalFile?: boolean; id: string; url: string; title?: string | null; uploader?: string | null; durationSeconds?: number | null; isVideo?: boolean; fileSizeBytes?: number | null; thumbnailUrl?: string | null; localRelativePath?: string | null; subtitleRelativePath?: string | null; status?: string | null; createdAt: string; downloadedAt?: string | null }
+interface ApiSource { isLocalFile?: boolean; publishedOn?: string | null; id: string; url: string; title?: string | null; uploader?: string | null; durationSeconds?: number | null; isVideo?: boolean; fileSizeBytes?: number | null; thumbnailUrl?: string | null; localRelativePath?: string | null; subtitleRelativePath?: string | null; status?: string | null; createdAt: string; downloadedAt?: string | null }
 interface ApiCampaignSummary { id: string; name: string; brand?: string | null; status: CampaignStatus; updatedAt: string; sourceCount: number; platformCount: number; latestRequirementVersion?: number | null; campaignType?: string | null; category?: string | null; payoutAmount?: number | null; payoutPerViews?: number | null; payoutUnit?: string | null; deadline?: string | null; whopUrl?: string | null }
 interface ApiCampaignDocument { id: string; fileName: string; kind: CampaignDocument["kind"]; sizeBytes: number; pageCount?: number | null; extractedCharacterCount: number; extractionStatus: CampaignDocument["extractionStatus"]; extractionError?: string | null; includeInExtraction: boolean; relativePath: string; uploadedAt: string }
 interface ApiReferenceVideo { id: string; label: string; url?: string | null; localRelativePath?: string | null; notes?: string | null; isPrimary: boolean; durationSeconds?: number | null; status: ReferenceVideo["status"]; error?: string | null; styleProfile?: unknown; createdAt: string; analyzedAt?: string | null }
@@ -95,7 +96,7 @@ interface ApiDashboard { campaignCounts?: { total: number; draft: number; ready:
 function mapRequirementItem(item: ApiRequirementItem): RequirementItem { return { ...item, label: humanize(item.key), origin: "Extracted" } }
 function mapRevision(revision: ApiRequirementRevision): RequirementRevision { return { id: revision.id, version: revision.version, status: revision.isApproved ? "Approved" : "Draft", approvedAt: revision.approvedAt, createdAt: revision.createdAt, items: revision.items.map(mapRequirementItem) } }
 function mapProfile(profile: ApiPlatformProfile): PlatformProfile { return { id: profile.id, platform: profile.platform, enabled: profile.enabled, width: profile.width, height: profile.height, aspectRatio: aspectRatio(profile.width, profile.height), minDurationSeconds: profile.minDurationSeconds, preferredDurationSeconds: profile.preferredDurationSeconds, maxDurationSeconds: profile.maxDurationSeconds, maxFileSizeMb: profile.maxFileSizeBytes == null ? null : profile.maxFileSizeBytes / 1024 ** 2, captionTemplate: profile.captionTemplate, hashtags: profile.requiredHashtags ?? [], mentions: profile.requiredMentions ?? [], disclosure: profile.disclosureText, cta: profile.callToAction, burnSubtitles: profile.burnSubtitles, subtitleStyle: profile.burnSubtitles ? "Campaign subtitle style" : "", safeAreaNotes: profile.safeAreaNotes, complianceChecklist: profile.complianceChecklist ?? [], valueOrigins: profile.valueOrigins ?? {}, origin: Object.keys(profile.valueOrigins ?? {}).length ? "Extracted" : "Default" } }
-function mapSource(source: ApiSource): SourceAsset { return { id: source.id, url: source.url, isLocalFile: source.isLocalFile ?? !source.url, title: source.title || source.url || "Local file", status: source.status || (source.localRelativePath ? "Downloaded" : source.title ? "Inspected" : "Pending"), durationSeconds: source.durationSeconds, isVideo: source.isVideo ?? (source.durationSeconds ?? 0) > 0, fileSizeBytes: source.fileSizeBytes, uploader: source.uploader, thumbnailUrl: source.thumbnailUrl, localPath: source.localRelativePath, subtitleRelativePath: source.subtitleRelativePath, createdAt: source.createdAt } }
+function mapSource(source: ApiSource): SourceAsset { return { id: source.id, url: source.url, isLocalFile: source.isLocalFile ?? !source.url, title: source.title || source.url || "Local file", status: source.status || (source.localRelativePath ? "Downloaded" : source.title ? "Inspected" : "Pending"), durationSeconds: source.durationSeconds, isVideo: source.isVideo ?? (source.durationSeconds ?? 0) > 0, fileSizeBytes: source.fileSizeBytes, uploader: source.uploader, thumbnailUrl: source.thumbnailUrl, localPath: source.localRelativePath, subtitleRelativePath: source.subtitleRelativePath, createdAt: source.createdAt, publishedOn: source.publishedOn } }
 function mapSummary(campaign: ApiCampaignSummary): CampaignSummary { return { ...campaign, brand: campaign.brand, updatedAt: campaign.updatedAt, payout: formatPayout(campaign.payoutAmount, campaign.payoutPerViews, campaign.payoutUnit) } }
 function mapDocument(document: ApiCampaignDocument): CampaignDocument { return { id: document.id, fileName: document.fileName, kind: document.kind, sizeBytes: document.sizeBytes, pageCount: document.pageCount, extractedCharacterCount: document.extractedCharacterCount, extractionStatus: document.extractionStatus, extractionError: document.extractionError, includeInExtraction: document.includeInExtraction, relativePath: document.relativePath, uploadedAt: document.uploadedAt } }
 function mapReference(reference: ApiReferenceVideo): ReferenceVideo { const profile = reference.styleProfile && typeof reference.styleProfile === "object" ? reference.styleProfile as ReferenceVideo["styleProfile"] : null; return { id: reference.id, label: reference.label, url: reference.url, localRelativePath: reference.localRelativePath, notes: reference.notes, isPrimary: reference.isPrimary, durationSeconds: reference.durationSeconds, status: reference.status, error: reference.error, styleProfile: profile, createdAt: reference.createdAt, analyzedAt: reference.analyzedAt } }
@@ -219,10 +220,43 @@ export const api = {
   /** Re-render one podcast-split clip from its stored story. Pass volumes to override the campaign default for this clip. */
   rerenderClip: async (editPlanId: string, volumes?: { voiceVolume?: number; musicVolume?: number }) =>
     mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/rerender`, undefined, { params: volumes }))),
-  /** Live-preview info for a clip: its music-free companion video, the song + where it starts, and current volumes. */
+  startBrollRepair: async (editPlanId: string, input: { startSeconds: number; endSeconds: number; note?: string }) =>
+    mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/broll-repairs`, input))),
+  brollRepairCandidate: (editPlanId: string, repairId: string) =>
+    data(http.get<BrollRepairCandidate>(`/edit-plans/${editPlanId}/broll-repairs/${repairId}`)),
+  applyBrollRepair: (editPlanId: string, repairId: string) =>
+    data(http.post<{ applied: boolean; archivedRelativePath: string; outputRelativePath: string }>(
+      `/edit-plans/${editPlanId}/broll-repairs/${repairId}/apply`)),
+  /** The B-roll editor's view of one clip: its lower-panel shots, the words spoken over them, and its footage bin. */
+  brollEditor: (editPlanId: string) => data(http.get<import("@/lib/types").BrollEditorData>(`/edit-plans/${editPlanId}/editor`)),
+  /** Downloads a pasted link into the campaign's footage, in the background. When footage already holds that stretch,
+   * nothing is downloaded: it comes back with `reused` and where in it the stretch starts. */
+  addFootage: async (editPlanId: string, input: { url: string; fromSeconds?: number; toSeconds?: number }) => {
+    const result = await data(http.post<{ footage: { id: string; title: string }; job: ApiJob | null; reused: boolean; inSeconds: number }>(
+      `/edit-plans/${editPlanId}/footage`, input))
+    return { footage: result.footage, job: result.job ? mapJob(result.job) : null, reused: result.reused, inSeconds: result.inSeconds }
+  },
+  /** Sends a footage video to the Recycle Bin. */
+  deleteFootage: (editPlanId: string, footageId: string) => data(http.delete<void>(`/edit-plans/${editPlanId}/footage/${footageId}`)),
+  footageUrl: (editPlanId: string, footageId: string) => `${API_BASE_URL}/edit-plans/${editPlanId}/footage/${footageId}/file`,
+  /** The narrator voice (ElevenLabs). The key itself is never returned, only a hint of which one is saved. */
+  voiceOver: () => data(http.get<import("@/lib/types").VoiceOverSettings>("/voice-over")),
+  /** Leave apiKey empty to keep the saved key. */
+  saveVoiceOver: (input: { apiKey?: string; voiceId?: string; modelId?: string }) =>
+    publishingWrite((headers) => http.put<import("@/lib/types").VoiceOverSettings>("/voice-over", input, { headers })),
+  /** Free: reads the voice's name, proving the key and voice id work. */
+  testVoiceOver: () => publishingWrite((headers) => http.post<{ voiceName: string }>("/voice-over/test", null, { headers })),
+  /** Spends a few credits: one line read in the saved voice, as MP3. */
+  voiceOverSample: () => publishingWrite((headers) => http.post<Blob>("/voice-over/sample", null,
+    { headers, responseType: "blob", timeout: 120_000 })),
+  /** Replaces a run of shots with footage picked from the bin. Returns a preview job, exactly like an AI repair. */
+  startBrollEdit: async (editPlanId: string, input: { startSeconds: number; endSeconds: number;
+    shots: Array<{ footageId: string; inSeconds: number; durationSeconds: number; framing: number }> }) =>
+    mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/broll-edits`, input))),
+  /** Music settings for the next render and whether the finished file is out of date. */
   clipPreview: async (editPlanId: string) => data(http.get<{
     campaignId: string; previewRelativePath: string | null; musicAssetId: string | null
-    musicStartSeconds: number; voiceVolume: number; musicVolume: number
+    musicStartSeconds: number; voiceVolume: number; musicVolume: number; musicNeedsRender: boolean
   }>(`/edit-plans/${editPlanId}/preview`)),
   /** URL that streams a music/sfx file for the in-browser preview mixer. */
   musicFileUrl: (assetId: string) => `${API_BASE_URL}/media-library/assets/${assetId}/file`,
@@ -280,6 +314,24 @@ export const api = {
   validateRender: async (renderId: string) => mapJob(await data(http.post<ApiJob>(`/renders/${renderId}/validate`))),
   renderedClips: (campaignId: string) => data(http.get<import("@/lib/types").RenderedClip[]>(`/campaigns/${campaignId}/outputs`)),
   revealOutput: (campaignId: string, path: string) => data(http.post<{ revealed: boolean; folder: string | null }>(`/campaigns/${campaignId}/outputs/reveal`, null, { params: { path } })),
+  /** Sends the clip and its preview to the Windows Recycle Bin. Refused while it is on the YouTube schedule. */
+  deleteOutput: (campaignId: string, path: string) => data(http.delete<void>(`/campaigns/${campaignId}/outputs`, { params: { path } })),
+  /** Uploads the clip to Google Drive, checks it there, then frees it on this PC. No timeout: a slow upload is still working. */
+  moveToDrive: (campaignId: string, path: string) =>
+    data(http.post<{ remote: string; movedAt: string; bytes: number }>(`/campaigns/${campaignId}/outputs/drive`, null, { params: { path }, timeout: 0 })),
+  /** What "Move campaign to Drive" would move for this campaign: its source videos and finished clips on this PC. */
+  driveUploadSummary: (campaignId: string) =>
+    data(http.get<import("@/lib/types").CampaignDriveUpload>(`/campaigns/${campaignId}/drive/upload`)),
+  /** Starts the background move of every source video and finished clip: each leaves this PC once checked in Drive. */
+  uploadCampaignToDrive: async (campaignId: string) => mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/drive/upload`))),
+  /** What "Bring campaign back from Drive" would fetch: every clip and source video the campaign moved there. */
+  driveReturnSummary: (campaignId: string) =>
+    data(http.get<import("@/lib/types").CampaignDriveReturn>(`/campaigns/${campaignId}/drive/return`)),
+  /** Starts fetching the whole campaign back from Google Drive in the background. The Drive copies stay. */
+  bringCampaignBackFromDrive: async (campaignId: string) => mapJob(await data(http.post<ApiJob>(`/campaigns/${campaignId}/drive/return`))),
+  /** Downloads a moved clip from Google Drive and checks it. The Drive copy stays. */
+  bringBackFromDrive: (campaignId: string, path: string) =>
+    data(http.post<void>(`/campaigns/${campaignId}/outputs/drive/return`, null, { params: { path }, timeout: 0 })),
   exportCampaign: (campaignId: string) => data(http.post<{ folderRelativePath: string; summaryRelativePath: string }>(`/campaigns/${campaignId}/exports`)),
   // The server caps this list; without a limit it silently truncates and the pager would then
   // claim the last page is the last job. Keep the default in step with JOB_HISTORY_LIMIT.
@@ -324,6 +376,18 @@ export const api = {
     publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/confirm-instagram`, { confirmed: true, idempotencyKey }, { headers })),
   completeManualPublishingJob: (id: string, postUrl: string) =>
     publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/complete-manual`, { confirmed: true, postUrl }, { headers })),
+  youtubeSchedule: () => data(http.get<YouTubeSchedule>("/publishing/youtube-schedule")),
+  updateYouTubeScheduleSettings: (settings: Pick<YouTubeScheduleSettings, "slots" | "timeZoneId" | "uploadWindowHours">) =>
+    publishingWrite((headers) => http.put<YouTubeSchedule>("/publishing/youtube-schedule/settings", settings, { headers })),
+  /** Puts a rendered clip into the next free daily slot. YouTube makes it public at that time. */
+  scheduleOnYouTube: (campaignId: string, input: { outputRelativePath: string; editPlanId?: string | null; title: string; caption: string; idempotencyKey: string }) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/campaigns/${campaignId}/publishing/youtube-schedule`, { ...input, confirmed: true }, { headers })),
+  /** Deletes the upload (or cancels it before upload) and moves every later clip up one slot. */
+  unscheduleFromYouTube: (jobId: string) =>
+    publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${jobId}/unschedule`, { confirmed: true }, { headers })),
+  updatePhoneNotifications: (input: { enabled: boolean; server?: string; topic?: string }) =>
+    publishingWrite((headers) => http.put<PhoneNotificationSettings>("/publishing/notifications", input, { headers })),
+  testPhoneNotification: () => publishingWrite((headers) => http.post<{ sent: boolean }>("/publishing/notifications/test", null, { headers })),
 }
 
 /** Direct download URL for the TikTok handoff ZIP. The endpoint never contains credentials. */

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, Clipboard, ExternalLink, Image, KeyRound, Save, ShieldCheck, UserRoundPlus } from "lucide-react"
+import { Check, Clipboard, ExternalLink, Image, KeyRound, Save, ShieldCheck, UserRoundPlus, WandSparkles } from "lucide-react"
 import { toast } from "sonner"
 import { api, getErrorMessage } from "@/lib/api"
 import { accountKitText, copyGeneratedPassword, copyText, publishingPlatformLabels, publishingPlatforms, safeAccountFields } from "@/lib/publishing"
@@ -12,9 +12,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import { EmptyState, ErrorState } from "@/components/page"
 
-function KitEditor({ kit, guide }: { kit: AccountKit; guide?: PlatformGuide }) {
+function identityToken(value: string) {
+  return value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]/g, "")
+}
+
+function KitEditor({ kit, guide, featuredSubject }: { kit: AccountKit; guide?: PlatformGuide; featuredSubject: string }) {
   const queryClient = useQueryClient()
   const fields = useMemo(() => safeAccountFields(kit.fields), [kit.fields])
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((field) => [field.key, field.value])))
@@ -24,6 +29,17 @@ function KitEditor({ kit, guide }: { kit: AccountKit; guide?: PlatformGuide }) {
     onSuccess: () => {
       toast.success(`${kit.displayName} setup kit saved`)
       queryClient.invalidateQueries({ queryKey: ["publishing", "account-kits", kit.campaignId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  const regenerate = useMutation({
+    mutationFn: () => api.regenerateAccountKitIdentity(kit.campaignId, kit.platform),
+    onSuccess: (updated) => {
+      const updatedFields = safeAccountFields(updated.fields)
+      setValues(Object.fromEntries(updatedFields.map((field) => [field.key, field.value])))
+      queryClient.setQueryData<AccountKit[]>(["publishing", "account-kits", kit.campaignId], (current) =>
+        current?.map((item) => item.platform === updated.platform ? updated : item))
+      toast.success("Independent highlights identity regenerated. Signup and contact details were preserved.")
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
@@ -45,17 +61,27 @@ function KitEditor({ kit, guide }: { kit: AccountKit; guide?: PlatformGuide }) {
     } catch (error) { toast.error(getErrorMessage(error)) }
   }
   const completedSteps = Object.values(steps).filter(Boolean).length
+  const subjectToken = identityToken(featuredSubject)
+  const identityMatchesSubject = Boolean(subjectToken) && ["displayName", "handle", "username"]
+    .some((key) => identityToken(values[key] ?? "") === subjectToken)
 
   return (
     <div className="space-y-5">
+      <Alert tone="info">
+        <span><strong>Featured creator/brand:</strong> {featuredSubject}. <strong>Your account is separate:</strong> the suggestions below create an independent “Clip Notes” highlights identity with curated captions and context.</span>
+      </Alert>
+      {identityMatchesSubject && <Alert tone="warning"><strong>This identity still matches the featured creator.</strong> Use <em>Regenerate identity</em> or enter a distinct channel name and handle so viewers do not mistake it for the official account.</Alert>}
       <Alert tone="success">
         <span className="flex gap-3"><ShieldCheck className="mt-0.5 size-4 shrink-0" /><span><strong>No social account passwords are saved here.</strong> This kit contains only paste-ready signup and public profile details.</span></span>
       </Alert>
 
       <Card>
         <CardHeader className="flex-row items-start justify-between gap-4">
-          <div><CardTitle>{kit.displayName} account kit</CardTitle><CardDescription>Fill once, then copy each value while creating this campaign’s account.</CardDescription></div>
-          <Button variant="outline" size="sm" onClick={copyAll} disabled={!fields.some((field) => (values[field.key] ?? "").trim())}><Clipboard /> Copy all</Button>
+          <div><CardTitle>{kit.displayName} highlights-channel kit</CardTitle><CardDescription>These are editable identity suggestions for your channel—not credentials for impersonating the featured creator.</CardDescription></div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => regenerate.mutate()} disabled={regenerate.isPending}><WandSparkles /> {regenerate.isPending ? "Regenerating…" : "Regenerate identity"}</Button>
+            <Button variant="outline" size="sm" onClick={copyAll} disabled={!fields.some((field) => (values[field.key] ?? "").trim())}><Clipboard /> Copy all</Button>
+          </div>
         </CardHeader>
         <CardContent>
           <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); save.mutate() }}>
@@ -70,7 +96,9 @@ function KitEditor({ kit, guide }: { kit: AccountKit; guide?: PlatformGuide }) {
                     </div>
                     <div className="relative">
                       {profileImage && <Image className="pointer-events-none absolute left-3 top-3 size-4 text-[var(--fg-subtle)]" />}
-                      <Input id={`kit-${kit.platform}-${field.key}`} className={profileImage ? "pl-9" : undefined} value={values[field.key] ?? ""} required={field.required} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} autoComplete="off" />
+                      {field.key === "bio"
+                        ? <Textarea id={`kit-${kit.platform}-${field.key}`} rows={4} value={values[field.key] ?? ""} required={field.required} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} />
+                        : <Input id={`kit-${kit.platform}-${field.key}`} className={profileImage ? "pl-9" : undefined} value={values[field.key] ?? ""} required={field.required} onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))} autoComplete="off" />}
                     </div>
                     {field.helpText && <p className="mt-1.5 text-xs leading-relaxed text-[var(--fg-muted)]">{field.helpText}</p>}
                   </div>
@@ -119,10 +147,12 @@ export function AccountKitPanel({ campaigns, guides }: { campaigns: CampaignSumm
   const kits = useQuery({ queryKey: ["publishing", "account-kits", campaignId], queryFn: () => api.accountKits(campaignId), enabled: Boolean(campaignId), retry: 1 })
   if (!campaigns.length) return <EmptyState title="Create a campaign first" description="Account setup kits use the campaign brand, link, and publishing requirements to prepare paste-ready profile details." icon={<UserRoundPlus className="size-6" />} />
   const selected = kits.data?.find((kit) => kit.platform === platform)
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === campaignId)
+  const featuredSubject = selectedCampaign?.brand?.trim() || selectedCampaign?.name || "Featured creator"
   return (
     <div className="space-y-5">
       <Card><CardContent className="grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"><div><Label htmlFor="account-kit-campaign">Campaign</Label><Select value={campaignId} onValueChange={setCampaignId}><SelectTrigger id="account-kit-campaign" className="mt-1.5"><SelectValue placeholder="Select a campaign" /></SelectTrigger><SelectContent>{campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}{campaign.brand ? ` · ${campaign.brand}` : ""}</SelectItem>)}</SelectContent></Select></div><div className="flex flex-wrap gap-2" role="group" aria-label="Platform account kit">{publishingPlatforms.map((item) => <Button key={item} type="button" variant={platform === item ? "brand" : "outline"} onClick={() => setPlatform(item)}>{publishingPlatformLabels[item]}</Button>)}</div></CardContent></Card>
-      {kits.isLoading ? <Card><CardContent className="p-8 text-center text-sm text-[var(--fg-muted)]" aria-live="polite">Loading account kit…</CardContent></Card> : kits.isError ? <ErrorState title="Couldn’t load the account kit" message={getErrorMessage(kits.error)} onRetry={() => kits.refetch()} /> : selected ? <KitEditor key={`${campaignId}-${platform}`} kit={selected} guide={guides.find((guide) => guide.platform === platform)} /> : <EmptyState title={`${publishingPlatformLabels[platform]} kit unavailable`} description="The backend did not return a setup kit for this platform. Refresh or check the campaign requirements." />}
+      {kits.isLoading ? <Card><CardContent className="p-8 text-center text-sm text-[var(--fg-muted)]" aria-live="polite">Loading account kit…</CardContent></Card> : kits.isError ? <ErrorState title="Couldn’t load the account kit" message={getErrorMessage(kits.error)} onRetry={() => kits.refetch()} /> : selected ? <KitEditor key={`${campaignId}-${platform}`} kit={selected} guide={guides.find((guide) => guide.platform === platform)} featuredSubject={featuredSubject} /> : <EmptyState title={`${publishingPlatformLabels[platform]} kit unavailable`} description="The backend did not return a setup kit for this platform. Refresh or check the campaign requirements." />}
     </div>
   )
 }

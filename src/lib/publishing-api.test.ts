@@ -25,6 +25,9 @@ describe("publishing API bindings", () => {
     const put = vi.spyOn(http, "put").mockResolvedValue({ data: kit })
     await api.updateAccountKit("campaign-1", "TikTok", { username: "dailyclips" })
     expect(put).toHaveBeenCalledWith("/campaigns/campaign-1/publishing/account-kits/TikTok", { fields: { username: "dailyclips" } }, { headers: { "X-WhopClipper-Nonce": "nonce-123" } })
+    const post = vi.spyOn(http, "post").mockResolvedValue({ data: kit })
+    await api.regenerateAccountKitIdentity("campaign-1", "TikTok")
+    expect(post).toHaveBeenCalledWith("/campaigns/campaign-1/publishing/account-kits/TikTok/regenerate-identity", null, { headers: { "X-WhopClipper-Nonce": "nonce-123" } })
   })
 
   it("maps write-only connection configuration without expecting returned secrets", async () => {
@@ -54,5 +57,16 @@ describe("publishing API bindings", () => {
 
     await api.completeManualPublishingJob("job-1", "https://www.tiktok.com/@creator/video/1")
     expect(post).toHaveBeenLastCalledWith("/publishing/jobs/job-1/complete-manual", { confirmed: true, postUrl: "https://www.tiktok.com/@creator/video/1" }, { headers: { "X-WhopClipper-Nonce": "nonce-123" } })
+  })
+
+  it("confirms every YouTube schedule change and sends the local nonce", async () => {
+    const post = vi.spyOn(http, "post").mockResolvedValue({ data: job })
+    const input = { outputRelativePath: "outputs/clip.mp4", editPlanId: "plan-1", title: "Title", caption: "Caption", idempotencyKey: "key-1" }
+
+    await api.scheduleOnYouTube("campaign-1", input)
+    expect(post).toHaveBeenLastCalledWith("/campaigns/campaign-1/publishing/youtube-schedule", { ...input, confirmed: true }, { headers: { "X-WhopClipper-Nonce": "nonce-123" } })
+
+    await api.unscheduleFromYouTube("job-1")
+    expect(post).toHaveBeenLastCalledWith("/publishing/jobs/job-1/unschedule", { confirmed: true }, { headers: { "X-WhopClipper-Nonce": "nonce-123" } })
   })
 })

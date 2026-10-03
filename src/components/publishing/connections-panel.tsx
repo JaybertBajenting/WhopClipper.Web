@@ -1,9 +1,10 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckCircle2, CircleAlert, ExternalLink, KeyRound, Link2, RefreshCw, Save, ShieldCheck, Unplug } from "lucide-react"
+import { CheckCircle2, CircleAlert, ExternalLink, FileJson, KeyRound, Link2, RefreshCw, Save, ShieldCheck, Unplug } from "lucide-react"
 import { toast } from "sonner"
 import { api, getErrorMessage } from "@/lib/api"
 import { publishingPlatformLabels, publishingPlatforms } from "@/lib/publishing"
+import { readGoogleClientFile } from "@/lib/youtube-schedule"
 import type { PlatformGuide, PublishingConnectionInput, PublishingConnectionStatus, PublishingPlatform } from "@/lib/types"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -66,6 +67,16 @@ function ApiConnectionForm({ connection, guide, onOAuthStarted }: { connection: 
   const isInstagram = connection.platform === "InstagramReels"
   const canStartOAuth = connection.configuredFields.includes("clientId") && connection.configuredFields.includes("accountId")
   const update = (key: string, value: string) => setValues((current) => ({ ...current, [key]: value }))
+  // The same Google client your Meme Shorts app already uses: its client_secret JSON fills both fields.
+  // Read here in the browser; nothing is stored until Save configuration encrypts it.
+  const importClientFile = async (file?: File) => {
+    if (!file) return
+    try {
+      const { clientId, clientSecret } = readGoogleClientFile(await file.text())
+      setValues((current) => ({ ...current, clientId, clientSecret }))
+      toast.success("Client ID and secret filled in. Add the channel handle, then Save configuration.")
+    } catch (error) { toast.error(getErrorMessage(error)) }
+  }
 
   return (
     <div className="space-y-5">
@@ -78,6 +89,13 @@ function ApiConnectionForm({ connection, guide, onOAuthStarted }: { connection: 
           {connection.accountIdentifier && <div className="mb-5 rounded-xl border border-[var(--border-accent)] bg-[var(--surface-accent-subtle)] p-4"><p className="text-xs font-semibold text-[var(--brand-text)]">Exact upload destination</p><p className="mt-1 font-mono text-sm text-ink">{connection.accountIdentifier}</p>{connection.lastValidatedAt && <p className="mt-1 text-xs text-[var(--fg-muted)]">Last validated {new Date(connection.lastValidatedAt).toLocaleString()}</p>}{connection.grantedScopes.length ? <p className="mt-1 text-xs text-[var(--fg-muted)]">Granted scope: {connection.grantedScopes.join(", ")}</p> : null}</div>}
           {connection.lastError && <Alert className="mb-5" tone="error">{connection.lastError}</Alert>}
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); save.mutate() }}>
+            {isYouTube && (
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-[var(--border-strong)] p-3 text-xs text-[var(--fg-body)] hover:bg-[var(--surface-raised)]">
+                <FileJson className="size-4 shrink-0" />
+                <span><strong>Use a Google client file</strong> - pick the client_secret .json from Google Cloud (your Meme Shorts app keeps one in its secrets folder) to fill the client ID and secret.</span>
+                <input type="file" accept=".json,application/json" className="sr-only" onChange={(event) => { void importClientFile(event.target.files?.[0]); event.target.value = "" }} />
+              </label>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <div><Label htmlFor={`${connection.platform}-client-id`}>OAuth client ID</Label><Input id={`${connection.platform}-client-id`} className="mt-1.5 font-mono text-xs" value={values.clientId} onChange={(event) => update("clientId", event.target.value)} placeholder={connection.configuredFields.includes("clientId") ? "Saved — enter only to replace" : "Paste client ID"} autoComplete="off" /></div>
               <div><Label htmlFor={`${connection.platform}-client-secret`}>OAuth client secret {isYouTube && <span className="font-normal text-[var(--fg-muted)]">(optional for desktop apps)</span>}</Label><Input id={`${connection.platform}-client-secret`} className="mt-1.5 font-mono text-xs" type="password" value={values.clientSecret} onChange={(event) => update("clientSecret", event.target.value)} placeholder={connection.secretConfigured.clientSecret ? "Saved securely — enter only to replace" : isYouTube ? "Optional if Google did not issue one" : "Paste client secret"} autoComplete="new-password" /></div>

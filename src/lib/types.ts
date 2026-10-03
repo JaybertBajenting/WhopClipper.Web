@@ -5,7 +5,7 @@ export type PublishingPlatform = Exclude<Platform, "X">
 export type PublishingConnectionMode = "Api" | "Manual"
 export type PublishingConnectionState = "NotConfigured" | "Configured" | "NeedsAttention"
 export type PublishPrivacy = "private" | "unlisted" | "public"
-export type PublishStatus = "Queued" | "Validating" | "Uploading" | "Processing" | "AwaitingFinalConfirmation" | "Published" | "RequiresManualAction" | "NeedsAttention" | "Failed" | "Cancelled"
+export type PublishStatus = "Queued" | "Validating" | "Uploading" | "Processing" | "AwaitingFinalConfirmation" | "Published" | "RequiresManualAction" | "NeedsAttention" | "Failed" | "Cancelled" | "Scheduled" | "Removed"
 export type AiMode = "Claude" | "Codex" | "Auto" | "Compare"
 export type RequirementOrigin = "Extracted" | "Default" | "UserOverride"
 
@@ -95,6 +95,8 @@ export interface SourceAsset {
   hasTranscript?: boolean
   isLocalFile?: boolean
   createdAt?: string
+  /** The day the video was published where it came from ("2026-09-15"); unknown until looked up, or for a local file. */
+  publishedOn?: string | null
 }
 
 export type CampaignDocumentKind = "Pdf" | "Word" | "Text" | "Markdown" | "Html"
@@ -127,7 +129,7 @@ export interface CampaignBranding {
   enabled: boolean
 }
 
-export type EditStyleKind = "Streamer" | "PodcastSplit"
+export type EditStyleKind = "Streamer" | "PodcastSplit" | "NarratedLuxury"
 
 /** Which edit a campaign's clips get. The podcast fields only matter for "PodcastSplit". */
 export interface CampaignEditStyle {
@@ -146,6 +148,14 @@ export interface CampaignEditStyle {
   excludedMusic?: string[] | null
   /** Loudness of the podcast voice, 1 = the normalised baseline. Turn up if music covers it. */
   voiceVolume?: number
+  /** Narrated style: freeze the last frame in black and white with a skull over the face, as the reference ends. */
+  skullEnding?: boolean
+  /** Narrated style: the bell with the opening arrow and the camera shutter on the hand-over flash. */
+  soundEffects?: boolean
+  /** The sound-effect folder those two sounds come from; unset searches every enabled one, newest first. */
+  soundLocationId?: string | null
+  /** Who sits where on each episode's couch shot, left to right, keyed by YouTube video id. */
+  cameraSeats?: Record<string, string[]> | null
 }
 
 /** How a podcast-split clip was put together: the footage underneath and any moment left without any. */
@@ -159,6 +169,84 @@ export interface RenderedClipStyle {
   /** This clip's own voice/music gains, if it overrides the campaign default. */
   voiceVolume?: number | null
   musicVolume?: number | null
+}
+
+/** A video in a clip's footage bin, downloaded from a link pasted in the B-roll editor. */
+/** The saved narrator voice for the narrated style. */
+export interface VoiceOverSettings {
+  configured: boolean
+  /** Enough of the saved key to recognise it, never the key. */
+  keyHint?: string | null
+  voiceId: string
+  modelId: string
+}
+
+/** Where a footage download has got to. */
+export interface FootageProgress {
+  stage: string
+  /** 0 to 1 of the stretch downloaded; missing before the download proper starts. */
+  fraction?: number | null
+  bytes?: number | null
+}
+
+/** One video of the campaign's footage, as the editor of one clip sees it. Shared by every clip of the campaign. */
+export interface FootageItem {
+  id: string
+  url: string
+  title: string
+  channel?: string | null
+  youTubeId?: string | null
+  fromSeconds?: number | null
+  toSeconds?: number | null
+  /** How long the whole linked video is. */
+  sourceDurationSeconds?: number | null
+  status: "Downloading" | "Ready" | "Failed" | string
+  durationSeconds: number
+  width: number
+  height: number
+  error?: string | null
+  createdAt: string
+  /** Pasted into this clip's editor, or already used in this clip. */
+  addedHere: boolean
+  /** The clip it was pasted into, when that is another clip. */
+  addedIn?: string | null
+  /** Shots of this clip cut from it, and where in it each starts. */
+  usedHere: Array<{ shot: number; inSeconds?: number | null; durationSeconds: number }>
+  progress?: FootageProgress | null
+}
+
+/** One lower-panel shot of a clip, on the clip clock. */
+export interface BrollEditorShot {
+  index: number
+  startSeconds: number
+  durationSeconds: number
+  sourceTitle?: string | null
+  sourceUrl?: string | null
+  query: string
+  pickedByHand: boolean
+  footageId?: string | null
+}
+
+export interface BrollEditorData {
+  planId: string
+  title: string
+  durationSeconds: number
+  shots: BrollEditorShot[]
+  gaps: Array<{ atSeconds: number; durationSeconds: number; query: string; reason: string }>
+  /** Every spoken word, on the clip clock. */
+  words: Array<{ start: number; end: number; word: string }>
+  footage: FootageItem[]
+}
+
+export interface BrollRepairCandidate {
+  repairId: string
+  planId: string
+  startSeconds: number
+  endSeconds: number
+  spokenText: string
+  createdAt: string
+  shots: Array<{ query: string; sourceTitle?: string | null; sourceUrl?: string | null; durationSeconds: number }>
+  previewUrl: string
 }
 
 export interface ReferenceStyleProfile {
@@ -242,6 +330,11 @@ export interface RenderedClip {
   caption?: string
   /** Set for podcast-split clips only. */
   style?: RenderedClipStyle | null
+  /** Set when the clip's video was moved to Google Drive. It stays listed, by its thumbnail, until brought back. */
+  drive?: { remote: string; movedAt: string; bytes: number } | null
+  /** The video the clip was cut from, and the day that video was published. The list comes newest video first. */
+  sourceTitle?: string | null
+  sourcePublishedOn?: string | null
 }
 
 export interface CampaignDetail extends CampaignSummary {
@@ -268,6 +361,31 @@ export interface DashboardSummary {
   storageUsedBytes: number
   recentCampaigns: CampaignSummary[]
   recentJobs: Job[]
+}
+
+/** What "Move campaign to Drive" would move for a campaign, counted on this PC before anything goes. */
+export interface CampaignDriveUpload {
+  /** The campaign's folder in Google Drive, as rclone names it. */
+  remote: string
+  sources: number
+  sourceBytes: number
+  clips: number
+  /** What the clips free on this PC, their music-free previews included. */
+  clipBytes: number
+  /** Clips moved to Drive earlier, whose video is no longer on this PC. */
+  alreadyMoved: number
+  /** Files a render or download is still writing; they wait for the next move. */
+  stillWriting: number
+}
+
+/** What "Bring campaign back from Drive" would fetch, and the room this PC has for it. */
+export interface CampaignDriveReturn {
+  sources: number
+  sourceBytes: number
+  clips: number
+  /** Clips with their music-free previews. */
+  clipBytes: number
+  freeBytes: number
 }
 
 export interface Job {
@@ -561,6 +679,39 @@ export interface PublishJob {
   createdAt: string
   updatedAt: string
   publishedAt?: string | null
+  /** The clip this publishes, when it came from a rendered clip. */
+  editPlanId?: string | null
+  /** The daily slot at which YouTube makes a scheduled clip public. */
+  scheduledPublishAt?: string | null
+  /** A scheduled clip still waiting to upload starts uploading at this time. */
+  uploadsAfter?: string | null
+  notificationScheduled?: boolean
+}
+
+export interface YouTubeScheduleSettings {
+  slots: string[]
+  timeZoneId: string
+  timeZoneName: string
+  uploadWindowHours: number
+}
+
+export interface PhoneNotificationSettings {
+  enabled: boolean
+  server: string
+  topic: string
+  subscribeUrl: string
+}
+
+export interface YouTubeSchedule {
+  settings: YouTubeScheduleSettings
+  notifications: PhoneNotificationSettings
+  connected: boolean
+  /** False until YouTube is reconnected with permission to move and delete scheduled videos. */
+  canManage: boolean
+  channel?: string | null
+  message: string
+  nextFreeSlot: string
+  items: PublishJob[]
 }
 
 export interface CreatePublishJobInput {

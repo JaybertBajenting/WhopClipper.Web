@@ -19,6 +19,8 @@ export const publishStatusLabels: Record<PublishStatus, string> = {
   NeedsAttention: "Check platform before retrying",
   Failed: "Failed",
   Cancelled: "Cancelled",
+  Scheduled: "Uploaded, goes public at its slot",
+  Removed: "Taken off YouTube",
 }
 
 const forbiddenAccountField = /(password|passcode|2fa|mfa|totp|recovery|backup.?code|authenticator|secret)/i

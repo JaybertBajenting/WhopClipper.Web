@@ -18,6 +18,12 @@ describe("describeClipStyle", () => {
 })
 
 describe("editStyleSignature", () => {
+  it("detects changes to caption and logo-position settings", () => {
+    for (const change of [{ captionFont: "Arial Black" }, { captionFontSize: 90 },
+      { logoRightMarginFraction: 0.1 }, { logoTopMarginFraction: 0.1 }]) {
+      expect(editStyleSignature({ ...DEFAULT_EDIT_STYLE, ...change })).not.toBe(editStyleSignature(DEFAULT_EDIT_STYLE))
+    }
+  })
   it("treats a campaign with no stored style as the default, so the card does not report unsaved changes", () => {
     expect(editStyleSignature(null)).toBe(editStyleSignature(DEFAULT_EDIT_STYLE))
     expect(editStyleSignature({ ...DEFAULT_EDIT_STYLE, style: "PodcastSplit" })).not.toBe(editStyleSignature(null))

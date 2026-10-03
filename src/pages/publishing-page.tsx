@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
-import { Link2, Send, ShieldCheck, UserRoundPlus } from "lucide-react"
+import { CalendarClock, Link2, Send, ShieldCheck, UserRoundPlus } from "lucide-react"
 import { api, getErrorMessage } from "@/lib/api"
 import { AccountKitPanel } from "@/components/publishing/account-kit-panel"
 import { ConnectionsPanel } from "@/components/publishing/connections-panel"
 import { PublisherPanel } from "@/components/publishing/publisher-panel"
+import { YouTubeSchedulePanel } from "@/components/publishing/youtube-schedule-panel"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -23,10 +24,11 @@ export function PublishingPage() {
         <Card><CardContent className="flex items-center gap-3 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[var(--surface-warning)] text-[var(--warning-text)]"><Send className="size-5" /></span><div><p className="text-sm font-semibold">Review before every post</p><p className="mt-0.5 text-xs text-[var(--fg-muted)]">TikTok remains manual</p></div></CardContent></Card>
       </div>
       <Tabs defaultValue="accounts">
-        <div className="mb-5 overflow-x-auto pb-1"><TabsList className="min-w-max"><TabsTrigger value="accounts"><UserRoundPlus /> Account setup <Badge variant="default">Per campaign</Badge></TabsTrigger><TabsTrigger value="connections"><Link2 /> Connections</TabsTrigger><TabsTrigger value="publish"><Send /> Upload videos</TabsTrigger></TabsList></div>
+        <div className="mb-5 overflow-x-auto pb-1"><TabsList className="min-w-max"><TabsTrigger value="accounts"><UserRoundPlus /> Account setup <Badge variant="default">Per campaign</Badge></TabsTrigger><TabsTrigger value="connections"><Link2 /> Connections</TabsTrigger><TabsTrigger value="publish"><Send /> Upload videos</TabsTrigger><TabsTrigger value="schedule"><CalendarClock /> YouTube schedule</TabsTrigger></TabsList></div>
         <TabsContent value="accounts"><AccountKitPanel campaigns={campaigns.data ?? []} guides={guides.data ?? []} /></TabsContent>
         <TabsContent value="connections"><ConnectionsPanel guides={guides.data ?? []} /></TabsContent>
         <TabsContent value="publish"><PublisherPanel campaigns={campaigns.data ?? []} guides={guides.data ?? []} /></TabsContent>
+        <TabsContent value="schedule"><YouTubeSchedulePanel /></TabsContent>
       </Tabs>
     </div>
   )

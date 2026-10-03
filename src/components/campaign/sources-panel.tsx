@@ -7,7 +7,7 @@ import { z } from "zod"
 import { api, getErrorMessage } from "@/lib/api"
 import type { CampaignDetail, SourceAsset } from "@/lib/types"
 import { usePagination } from "@/lib/pagination"
-import { formatBytes, formatDuration } from "@/lib/utils"
+import { formatBytes, formatDay, formatDuration } from "@/lib/utils"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -71,7 +71,7 @@ function SourceCard({ campaign, source }: { campaign: CampaignDetail; source: So
         {source.thumbnailUrl ? <img className="h-full w-full object-cover" src={source.thumbnailUrl} alt="" /> : <FileVideo className="size-8 text-[var(--fg-muted)]" />}
         <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">{formatDuration(source.durationSeconds)}</span>
       </div>
-      <div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant={downloaded ? "success" : source.status === "Failed" ? "destructive" : "secondary"}>{source.status || "Added"}</Badge>{source.hasTranscript && <Badge variant="default"><Subtitles /> Transcript</Badge>}</div><h3 className="truncate text-sm font-semibold text-ink">{source.title || source.url}</h3><p className="mt-1 truncate text-xs text-[var(--fg-muted)]">{source.uploader || "Remote source"} {source.format ? `· ${source.format}` : ""} {source.fileSizeBytes ? `· ${formatBytes(source.fileSizeBytes)}` : ""}</p>{source.localPath && <p className="mt-2 truncate font-mono text-[10px] text-[var(--fg-muted)]" title={source.localPath}>{source.localPath}</p>}</div>
+      <div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant={downloaded ? "success" : source.status === "Failed" ? "destructive" : "secondary"}>{source.status || "Added"}</Badge>{source.hasTranscript && <Badge variant="default"><Subtitles /> Transcript</Badge>}</div><h3 className="truncate text-sm font-semibold text-ink">{source.title || source.url}</h3><p className="mt-1 truncate text-xs text-[var(--fg-muted)]">{source.uploader || "Remote source"} {source.publishedOn ? `· Published ${formatDay(source.publishedOn)}` : ""} {source.format ? `· ${source.format}` : ""} {source.fileSizeBytes ? `· ${formatBytes(source.fileSizeBytes)}` : ""}</p>{source.localPath && <p className="mt-2 truncate font-mono text-[10px] text-[var(--fg-muted)]" title={source.localPath}>{source.localPath}</p>}</div>
       <div className="flex gap-2 md:flex-col"><Button variant="brand" title={blocked ?? "Download, find highlights, render the clips, then delete the video."} disabled={Boolean(blocked) || process.isPending} onClick={() => process.mutate()}>{process.isPending ? <LoaderCircle className="animate-spin" /> : <Play />} Process this source</Button>{source.isLocalFile ? <Badge variant="secondary">Local file</Badge> : <Button variant="outline" onClick={() => download.mutate()} disabled={download.isPending}><Download /> {download.isPending ? "Queuing…" : downloaded ? "Refresh" : "Download"}</Button>}{source.url ? <Button variant="ghost" asChild><a href={source.url} target="_blank" rel="noreferrer"><ExternalLink /> Source</a></Button> : null}<Button variant="ghost" size="icon" aria-label={`Remove ${source.title}`} title="Remove from campaign (the downloaded file is kept)" onClick={() => remove.mutate()} disabled={remove.isPending}><Trash2 /></Button></div>
     </div>
   )

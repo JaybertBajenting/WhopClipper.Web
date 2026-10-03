@@ -25,13 +25,18 @@ export const EDIT_STYLE_OPTIONS: Array<{ value: EditStyleKind; title: string; de
     title: "Podcast split + B-roll",
     description: "Guest on top, required relevant B-roll underneath, one word at a time on the split line. Missing footage stops the render for review.",
   },
+  {
+    value: "NarratedLuxury",
+    title: "Narrated luxury (MambaFX)",
+    description: "A narrator sets the story up over a fast montage, then the vlog moment plays in a window under a meme title. One coloured word at a time, skull ending. Needs an ElevenLabs voice in Settings.",
+  },
 ]
 
 export const editStyleSignature = (style?: CampaignEditStyle | null) => {
   const value = style ?? DEFAULT_EDIT_STYLE
   return [value.style, value.musicVolume, value.voiceVolume ?? 1, value.musicDuckingDb, value.brollShotSeconds,
     value.logoWidthFraction, value.captionFont, value.captionFontSize, value.logoRightMarginFraction,
-    value.logoTopMarginFraction].join("|")
+    value.logoTopMarginFraction, value.skullEnding ?? true, value.soundEffects ?? true].join("|")
 }
 
 /** One line for a clip tile: how many shots of footage, and whether any moment came back empty. */
