@@ -4,7 +4,8 @@ import { Ban, Check, CheckCircle2, CircleAlert, Clipboard, Download, ExternalLin
 import { toast } from "sonner"
 import { api, API_BASE_URL, getErrorMessage, manualPublishingPackageUrl } from "@/lib/api"
 import { copyText, publishingPlatformLabels, publishingPlatforms, publishStatusLabels } from "@/lib/publishing"
-import type { CampaignSummary, PlatformGuide, PublishingPlatform, PublishJob, PublishPrivacy, RenderedClip } from "@/lib/types"
+import type { CampaignSummary, PlatformGuide, PublishingConnectionStatus, PublishingPlatform, PublishJob, PublishPrivacy, RenderedClip } from "@/lib/types"
+import { useYouTubeSchedule } from "@/components/publishing/youtube-schedule-panel"
 import { formatBytes, formatDate } from "@/lib/utils"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -121,7 +122,16 @@ export function PublisherPanel({ campaigns, guides }: { campaigns: CampaignSumma
   const connections = useQuery({ queryKey: ["publishing", "connections"], queryFn: api.publishingConnections, retry: 1 })
   const jobs = useQuery({ queryKey: ["publishing", "jobs", campaignId], queryFn: () => api.publishingJobs({ campaignId }), enabled: Boolean(campaignId), retry: 1, refetchInterval: (query) => (query.state.data?.some((job) => activeStatuses.has(job.status)) ? 2_000 : 15_000) })
   const selectedClip = clips.data?.find((clip) => clip.relativePath === outputRelativePath)
-  const connectionByPlatform = useMemo(() => new Map((connections.data ?? []).map((connection) => [connection.platform, connection])), [connections.data])
+  // YouTube can have several pages: this campaign uploads to its own, so that is the one to show.
+  const youtubePage = useYouTubeSchedule({ campaignId }).data?.pageId
+  const connectionByPlatform = useMemo(() => {
+    const byPlatform = new Map<PublishingPlatform, PublishingConnectionStatus>()
+    for (const connection of connections.data ?? []) {
+      if (connection.platform === "YouTubeShorts" && connection.id && connection.id !== youtubePage) continue
+      if (!byPlatform.has(connection.platform)) byPlatform.set(connection.platform, connection)
+    }
+    return byPlatform
+  }, [connections.data, youtubePage])
   const invalidateConfirmation = () => { setConfirmed(false); idempotencyKeys.current.clear() }
   const enabledDefaults = (accountKits.data ?? []).filter((kit) => kit.publishDefaults.enabled)
   const defaultTitle = enabledDefaults[0]?.publishDefaults.title || campaigns.find((campaign) => campaign.id === campaignId)?.name || ""

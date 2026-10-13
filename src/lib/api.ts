@@ -1,4 +1,12 @@
 import axios, { AxiosError } from "axios"
+export interface PhoneAppStatus {
+  configured: boolean
+  projectId: string | null
+  lastSyncedAt: string | null
+  lastError: string | null
+  deviceCount: number
+  packageName: string
+}
 import { formatPayout } from "@/lib/utils"
 import type {
   AiAnalysis, AiMode, AiProviderStatus, AppSettings, CampaignBranding, CampaignDetail, CampaignEditStyle, CampaignDocument, CampaignStatus, CampaignSummary,
@@ -53,6 +61,8 @@ async function publishingWrite<T>(request: (headers: Record<string, string>) => 
     throw error
   }
 }
+/** Query naming one page of a platform; nothing when the platform's first page is meant. */
+const page = (connectionId?: string | null) => (connectionId ? { connectionId } : undefined)
 function humanize(value: string) { return value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) }
 function aspectRatio(width: number, height: number) { const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a; const divisor = gcd(width, height); return `${width / divisor}:${height / divisor}` }
 function safeResult(value?: string | null): Record<string, unknown> { try { return value ? JSON.parse(value) as Record<string, unknown> : {} } catch { return {} } }
@@ -129,6 +139,19 @@ async function fetchLatestAnalysis(campaignId: string) {
 }
 
 export const api = {
+  /** Whether the phone app's PC half is switched on. While it is off its screen is not shown. */
+  phoneAppEnabled: () => data(http.get<{ enabled: boolean }>("/publishing/phone-app/enabled")),
+  phoneAppStatus: () => data(http.get<PhoneAppStatus>("/publishing/phone-app")),
+  configurePhoneApp: (serviceAccount: File, androidSettings: File) => {
+    const form = new FormData()
+    form.append("serviceAccount", serviceAccount)
+    form.append("androidSettings", androidSettings)
+    return publishingWrite((headers) => http.post<PhoneAppStatus>("/publishing/phone-app/configure", form, { headers, timeout: 120_000 }))
+  },
+  phoneAppPairing: () => publishingWrite((headers) => http.post<{ code: string; svg: string }>("/publishing/phone-app/pairing", null, { headers })),
+  syncPhoneApp: () => publishingWrite((headers) => http.post<PhoneAppStatus>("/publishing/phone-app/sync", null, { headers, timeout: 120_000 })),
+  rotatePhoneApp: () => publishingWrite((headers) => http.post<PhoneAppStatus>("/publishing/phone-app/rotate", null, { headers, timeout: 120_000 })),
+  testPhoneApp: () => publishingWrite((headers) => http.post<{ sent: boolean }>("/publishing/phone-app/test", null, { headers })),
   dashboard: async () => {
     const [summary, campaigns] = await Promise.all([data(http.get<ApiDashboard>("/dashboard")), data(http.get<ApiCampaignSummary[]>("/campaigns"))])
     const mappedCampaigns = (summary.recentCampaigns?.length ? summary.recentCampaigns : campaigns).map(mapSummary)
@@ -304,8 +327,10 @@ export const api = {
   // The body names only the source: StartSourcePipelineRequest and AutoRunCampaignRequest
   // declare identical defaults for every shared field, so a source queued here runs on
   // exactly the settings it would have got in a bulk run.
-  startSourcePipeline: async (campaignId: string, sourceAssetId: string) =>
-    (await data(http.post<ApiJob[]>(`/campaigns/${campaignId}/pipelines`, { sourceAssetIds: [sourceAssetId] }))).map(mapJob),
+  // focus "cars" makes car clips: only moments where a car is on screen, found by looking at the
+  // video's thumbnails. Moments that already have a clip are skipped, so it can run on a source twice.
+  startSourcePipeline: async (campaignId: string, sourceAssetId: string, focus?: "cars") =>
+    (await data(http.post<ApiJob[]>(`/campaigns/${campaignId}/pipelines`, { sourceAssetIds: [sourceAssetId], ...(focus ? { focus } : {}) }))).map(mapJob),
   startAnalysis: async (campaignId: string, sourceAssetId: string, mode: AiMode, platform: Platform, transcript?: string) => { const response = await data(http.post<{ analysisRunId: string; job: ApiJob }>(`/campaigns/${campaignId}/ai-analysis`, { sourceAssetId, mode, platform, transcript: transcript?.trim() || null })); return { id: response.analysisRunId, sourceAssetId, mode, platform, status: response.job.status, createdAt: response.job.createdAt, candidates: [] } satisfies AiAnalysis },
   analysis: async (id: string) => mapAnalysis(await data(http.get<ApiAnalysis>(`/ai-analysis/${id}`))),
   selectHighlight: (analysisId: string, highlightId: string) => data(http.post(`/ai-analysis/${analysisId}/select-highlight/${highlightId}`)),
@@ -313,6 +338,8 @@ export const api = {
   renderEditPlan: async (editPlanId: string) => mapJob(await data(http.post<ApiJob>(`/edit-plans/${editPlanId}/renders`))),
   validateRender: async (renderId: string) => mapJob(await data(http.post<ApiJob>(`/renders/${renderId}/validate`))),
   renderedClips: (campaignId: string) => data(http.get<import("@/lib/types").RenderedClip[]>(`/campaigns/${campaignId}/outputs`)),
+  /** Marks a finished clip as a car clip, or as not one, for the clip list's "Cars only" switch. */
+  setClipCar: (planId: string, car: boolean) => data(http.put<{ car: boolean }>(`/edit-plans/${planId}/car`, { car })),
   revealOutput: (campaignId: string, path: string) => data(http.post<{ revealed: boolean; folder: string | null }>(`/campaigns/${campaignId}/outputs/reveal`, null, { params: { path } })),
   /** Sends the clip and its preview to the Windows Recycle Bin. Refused while it is on the YouTube schedule. */
   deleteOutput: (campaignId: string, path: string) => data(http.delete<void>(`/campaigns/${campaignId}/outputs`, { params: { path } })),
@@ -361,11 +388,18 @@ export const api = {
     publishingWrite((headers) => http.post<AccountKit>(`/campaigns/${campaignId}/publishing/account-kits/${platform}/regenerate-identity`, null, { headers })),
   publishingConnections: () => data(http.get<PublishingConnectionStatus[]>("/publishing/connections")),
   publishingConnection: (platform: PublishingPlatform) => data(http.get<PublishingConnectionStatus>(`/publishing/connections/${platform}`)),
-  updatePublishingConnection: (platform: PublishingPlatform, input: PublishingConnectionInput) =>
-    publishingWrite((headers) => http.put<PublishingConnectionStatus>(`/publishing/connections/${platform}`, input, { headers })),
-  disconnectPublishingConnection: (platform: PublishingPlatform) => publishingWrite((headers) => http.delete<void>(`/publishing/connections/${platform}`, { headers })),
-  validatePublishingConnection: (platform: PublishingPlatform) => publishingWrite((headers) => http.post<PublishingConnectionStatus>(`/publishing/connections/${platform}/validate`, null, { headers })),
-  startYouTubeOAuth: () => publishingWrite((headers) => http.post<YouTubeOAuthStart>("/publishing/connections/YouTubeShorts/oauth/start", {}, { headers })),
+  // connectionId names one page of a platform that can have several (YouTube). Left out, it is the first.
+  updatePublishingConnection: (platform: PublishingPlatform, input: PublishingConnectionInput, connectionId?: string | null) =>
+    publishingWrite((headers) => http.put<PublishingConnectionStatus>(`/publishing/connections/${platform}`, input, { headers, params: page(connectionId) })),
+  disconnectPublishingConnection: (platform: PublishingPlatform, connectionId?: string | null) =>
+    publishingWrite((headers) => http.delete<void>(`/publishing/connections/${platform}`, { headers, params: page(connectionId) })),
+  validatePublishingConnection: (platform: PublishingPlatform, connectionId?: string | null) =>
+    publishingWrite((headers) => http.post<PublishingConnectionStatus>(`/publishing/connections/${platform}/validate`, null, { headers, params: page(connectionId) })),
+  startYouTubeOAuth: (connectionId?: string | null) =>
+    publishingWrite((headers) => http.post<YouTubeOAuthStart>("/publishing/connections/YouTubeShorts/oauth/start", {}, { headers, params: page(connectionId) })),
+  /** Another YouTube page. It reuses an existing page's Google client, so it only needs signing in. */
+  addYouTubePage: (accountId: string) =>
+    publishingWrite((headers) => http.post<PublishingConnectionStatus>("/publishing/connections/YouTubeShorts/pages", { accountId }, { headers })),
   publishingJobs: (filters?: { campaignId?: string; platform?: PublishingPlatform; status?: PublishStatus }) =>
     data(http.get<PublishJob[]>("/publishing/jobs", { params: filters })),
   publishingJob: (id: string) => data(http.get<PublishJob>(`/publishing/jobs/${id}`)),
@@ -376,9 +410,15 @@ export const api = {
     publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/confirm-instagram`, { confirmed: true, idempotencyKey }, { headers })),
   completeManualPublishingJob: (id: string, postUrl: string) =>
     publishingWrite((headers) => http.post<PublishJob>(`/publishing/jobs/${id}/complete-manual`, { confirmed: true, postUrl }, { headers })),
-  youtubeSchedule: () => data(http.get<YouTubeSchedule>("/publishing/youtube-schedule")),
-  updateYouTubeScheduleSettings: (settings: Pick<YouTubeScheduleSettings, "slots" | "timeZoneId" | "uploadWindowHours">) =>
-    publishingWrite((headers) => http.put<YouTubeSchedule>("/publishing/youtube-schedule/settings", settings, { headers })),
+  /** One page's schedule: the named page, the page a campaign posts to, or the first page. */
+  youtubeSchedule: (scope?: { pageId?: string | null; campaignId?: string }) => data(scope?.campaignId
+    ? http.get<YouTubeSchedule>(`/campaigns/${scope.campaignId}/publishing/youtube-schedule`)
+    : http.get<YouTubeSchedule>("/publishing/youtube-schedule", { params: scope?.pageId ? { pageId: scope.pageId } : undefined })),
+  updateYouTubeScheduleSettings: (settings: Pick<YouTubeScheduleSettings, "slots" | "timeZoneId">, pageId?: string | null) =>
+    publishingWrite((headers) => http.put<YouTubeSchedule>("/publishing/youtube-schedule/settings", settings, { headers, params: pageId ? { pageId } : undefined })),
+  /** Chooses which YouTube page a campaign's clips go to. */
+  setCampaignYouTubePage: (campaignId: string, pageId: string | null) =>
+    publishingWrite((headers) => http.put<YouTubeSchedule>(`/campaigns/${campaignId}/publishing/youtube-page`, { pageId }, { headers })),
   /** Puts a rendered clip into the next free daily slot. YouTube makes it public at that time. */
   scheduleOnYouTube: (campaignId: string, input: { outputRelativePath: string; editPlanId?: string | null; title: string; caption: string; idempotencyKey: string }) =>
     publishingWrite((headers) => http.post<PublishJob>(`/campaigns/${campaignId}/publishing/youtube-schedule`, { ...input, confirmed: true }, { headers })),

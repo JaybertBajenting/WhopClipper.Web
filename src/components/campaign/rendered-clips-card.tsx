@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, CalendarClock, Check, Clapperboard, Cloud, CloudDownload, CloudUpload, Copy, Download, ExternalLink, Film, FolderOpen, Music, Play, RefreshCw, SlidersHorizontal, SquarePlay, Trash2 } from "lucide-react"
+import { AlertTriangle, CalendarClock, CarFront, Check, Clapperboard, Cloud, CloudDownload, CloudUpload, Copy, Download, ExternalLink, Film, FolderOpen, Music, Play, RefreshCw, SlidersHorizontal, SquarePlay, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { api, API_BASE_URL, getErrorMessage } from "@/lib/api"
 import { describeClipStyle } from "@/lib/edit-style"
 import type { CampaignEditStyle, Job, PublishJob, RenderedClip, YouTubeSchedule } from "@/lib/types"
-import { formatSlot, scheduleFor, scheduleState, shortsUrl } from "@/lib/youtube-schedule"
-import { scheduleQueryKey, TakeOffButton, useYouTubeSchedule } from "@/components/publishing/youtube-schedule-panel"
+import { formatSlot, formatSlotShort, scheduleFor, scheduleState, shortsUrl } from "@/lib/youtube-schedule"
+import { scheduleQueryKey, TakeOffButton, useYouTubeSchedule, YouTubePagePicker } from "@/components/publishing/youtube-schedule-panel"
 import { usePagination } from "@/lib/pagination"
 import { formatBytes, formatDate, formatDay } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +21,9 @@ import { BrollEditor } from "./broll-editor"
 // Each tile mounts a <video preload="metadata">, so the page size is the number of simultaneous
 // requests this card fires at the local API. The heavy player only mounts for the open clip.
 const CLIPS_PER_PAGE = 12
+
+/** Which clips the YouTube switch keeps: all of them, those public or scheduled, or those not posted yet. */
+type YouTubeFilter = "all" | "on" | "off"
 
 const platformLabels: Record<string, string> = {
   tiktok: "TikTok",
@@ -369,6 +372,127 @@ function MoveAllToDrive({ campaignId, clips, schedule, busyPlans }: {
   )
 }
 
+/** With several YouTube pages and none chosen for this campaign, there is no page to schedule on yet. */
+const mustChoosePage = (schedule: YouTubeSchedule) => !schedule.pageId && schedule.pages.length > 1
+
+/**
+ * Which YouTube page this campaign's clips go to. Hidden while there is only one page, since every
+ * campaign then uses it.
+ */
+function CampaignYouTubePage({ campaignId, schedule }: { campaignId: string; schedule: YouTubeSchedule }) {
+  const queryClient = useQueryClient()
+  const choose = useMutation({
+    mutationFn: (pageId: string) => api.setCampaignYouTubePage(campaignId, pageId),
+    onSuccess: (updated) => {
+      toast.success(`This campaign's clips now go to ${updated.channel ?? "that page"}.`)
+      queryClient.invalidateQueries({ queryKey: scheduleQueryKey })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  if (schedule.pages.length < 2) return null
+  return (
+    <div className="mb-4 space-y-2 rounded-xl border border-[var(--border-default)] p-3">
+      <YouTubePagePicker label="YouTube page for this campaign" pages={schedule.pages} value={schedule.pageId}
+        disabled={choose.isPending} onChange={(pageId) => { if (pageId !== schedule.pageId) choose.mutate(pageId) }} />
+      <p className="text-[11px] text-[var(--fg-muted)]">
+        {schedule.pageId
+          ? "Clips you schedule from here upload to this page. Clips already scheduled stay on the page they were sent to."
+          : "Pick the page this campaign posts to. Until you do, its clips cannot be scheduled."}
+      </p>
+    </div>
+  )
+}
+
+/** Puts a clip into the next free daily slot. Shared by the tile's button and the clip window. */
+function useScheduleOnYouTube(campaignId: string, clip: RenderedClip, onSettled: () => void) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.scheduleOnYouTube(campaignId, {
+      outputRelativePath: clip.relativePath, editPlanId: clip.editPlanId, title: clip.title || clip.fileName,
+      caption: clip.caption ?? "", idempotencyKey: crypto.randomUUID(),
+    }),
+    onSuccess: (created) => {
+      toast.success(`Scheduled. Goes public ${formatSlot(created.scheduledPublishAt)}.`)
+      queryClient.invalidateQueries({ queryKey: scheduleQueryKey })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+    onSettled,
+  })
+}
+
+/**
+ * The tile's shortcut to the YouTube schedule, so a page of clips can be scheduled without opening each
+ * one. Two clicks, like Delete: the second one uploads the clip, and its label says when it goes public.
+ */
+export function ScheduleOnYouTubeButton({ campaignId, clip, schedule, scheduled, busy }: {
+  campaignId: string; clip: RenderedClip; schedule?: YouTubeSchedule; scheduled?: PublishJob; busy?: boolean
+}) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const timer = window.setTimeout(() => setArmed(false), 6000)
+    return () => window.clearTimeout(timer)
+  }, [armed])
+  const add = useScheduleOnYouTube(campaignId, clip, () => setArmed(false))
+  // Already on the schedule: the tile's badge shows its time, and taking it off lives in the clip window.
+  if (!schedule || scheduled) return null
+  const blockedReason = mustChoosePage(schedule) ? "Choose this campaign's YouTube page first, above the clips."
+    : !(schedule.connected && schedule.canManage) ? "Connect YouTube under Publishing first."
+    : busy ? "Wait for the re-render to finish." : undefined
+  const label = `Schedule ${clip.title || clip.fileName} on YouTube`
+
+  if (add.isPending) {
+    return <Button variant="ghost" size="icon" className="size-8 bg-[var(--surface-raised)]/90" disabled aria-label="Scheduling on YouTube"><CalendarClock className="animate-pulse" /></Button>
+  }
+  if (armed) {
+    return (
+      <Button variant="brand" size="sm" className="h-8 px-2.5 text-xs shadow" onClick={() => add.mutate()} aria-label={`Confirm: ${label}`}
+        title={`Uploads now${schedule.channel ? ` to ${schedule.channel}` : ""} as private. Goes public ${formatSlot(schedule.nextFreeSlot)}.`}>
+        <CalendarClock /> {formatSlotShort(schedule.nextFreeSlot)}?
+      </Button>
+    )
+  }
+  return (
+    <Button variant="ghost" size="icon" className="size-8 bg-[var(--surface-raised)]/90 text-[var(--fg-muted)] hover:text-[var(--fg-strong)]"
+      disabled={Boolean(blockedReason)}
+      title={blockedReason ?? `Schedule on YouTube${schedule.pages.length > 1 && schedule.channel ? ` (${schedule.channel})` : ""} · ${formatSlot(schedule.nextFreeSlot)}`}
+      aria-label={label} onClick={() => setArmed(true)}>
+      <CalendarClock />
+    </Button>
+  )
+}
+
+/**
+ * The clip's car mark. The "Cars only" switch above the grid goes by the words in a clip's title and caption;
+ * this is where a clip those words get wrong is put right, in either direction. Needs no re-render.
+ */
+export function CarMarkButton({ campaignId, clip }: { campaignId: string; clip: RenderedClip }) {
+  const queryClient = useQueryClient()
+  const outputsKey = ["campaign", campaignId, "outputs"]
+  const car = Boolean(clip.car)
+  const mark = useMutation({
+    mutationFn: () => api.setClipCar(clip.editPlanId!, !car),
+    onSuccess: (saved) => {
+      queryClient.setQueryData<RenderedClip[]>(outputsKey, (current) =>
+        current?.map((item) => item.editPlanId === clip.editPlanId ? { ...item, car: saved.car } : item))
+      queryClient.invalidateQueries({ queryKey: outputsKey })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  const name = clip.title || clip.fileName
+  return (
+    <Button variant={car ? "brand" : "ghost"} size="icon"
+      className={car ? "size-8 shadow" : "size-8 bg-black/55 text-white/80 hover:bg-black/75 hover:text-white"}
+      disabled={!clip.editPlanId || mark.isPending} aria-pressed={car}
+      aria-label={car ? `Car clip: ${name}. Mark as not a car clip` : `Mark ${name} as a car clip`}
+      title={!clip.editPlanId ? "This clip has no saved edit, so its mark cannot be changed."
+        : car ? "Car clip. Click if it is not one." : "Not a car clip. Click to mark it as one."}
+      onClick={() => mark.mutate()}>
+      <CarFront />
+    </Button>
+  )
+}
+
 /** Progress for one clip's re-render, shown wherever that clip appears. */
 function RerenderProgress({ job, label = "Re-rendering" }: { job: Job; label?: string }) {
   return (
@@ -392,7 +516,9 @@ function RerenderProgress({ job, label = "Re-rendering" }: { job: Job; label?: s
  * The compact grid tile: a poster, the title and the few facts worth scanning. Everything you can
  * change lives in the detail dialog, so a page of twelve stays readable.
  */
-function ClipTile({ campaignId, clip, job, scheduled, onOpen }: { campaignId: string; clip: RenderedClip; job?: Job; scheduled?: PublishJob; onOpen: () => void }) {
+function ClipTile({ campaignId, clip, job, schedule, scheduled, onOpen }: {
+  campaignId: string; clip: RenderedClip; job?: Job; schedule?: YouTubeSchedule; scheduled?: PublishJob; onOpen: () => void
+}) {
   const src = `${API_BASE_URL}/campaigns/${campaignId}/outputs/file?path=${encodeURIComponent(clip.relativePath)}`
   const gaps = clip.style?.gaps?.length ?? 0
   const length = clipLength(clip)
@@ -420,7 +546,7 @@ function ClipTile({ campaignId, clip, job, scheduled, onOpen }: { campaignId: st
           ) : (
             <>
               {gaps > 0 && (
-                <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-[var(--warning-solid,#b45309)] px-2 py-0.5 text-[10px] font-semibold text-white">
+                <span className="absolute left-12 top-2.5 flex items-center gap-1 rounded-full bg-[var(--warning-solid,#b45309)] px-2 py-0.5 text-[10px] font-semibold text-white">
                   <AlertTriangle className="size-3" /> B-roll
                 </span>
               )}
@@ -440,7 +566,7 @@ function ClipTile({ campaignId, clip, job, scheduled, onOpen }: { campaignId: st
             </>
           )}
         </div>
-        <div className="flex flex-col gap-1 p-3 pr-20">
+        <div className="flex flex-col gap-1 p-3 pr-28">
           <p className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--fg-strong)]">{clip.title || clip.fileName}</p>
           <p className="text-[11px] text-[var(--fg-muted)]">
             {platformLabels[clip.platform.toLowerCase()] ?? clip.platform} · {formatBytes(clip.sizeBytes)}
@@ -452,11 +578,13 @@ function ClipTile({ campaignId, clip, job, scheduled, onOpen }: { campaignId: st
           ) : null}
         </div>
       </button>
+      <div className="absolute left-2 top-2"><CarMarkButton campaignId={campaignId} clip={clip} /></div>
       <div className="absolute bottom-2 right-2 flex items-center gap-1">
         {clip.drive ? (
           <BringBackButton compact campaignId={campaignId} clip={clip} />
         ) : (
           <>
+            <ScheduleOnYouTubeButton campaignId={campaignId} clip={clip} schedule={schedule} scheduled={scheduled} busy={Boolean(job)} />
             <MoveToDriveButton compact campaignId={campaignId} clip={clip} scheduled={scheduled} busy={Boolean(job)} />
             <DeleteClipButton compact campaignId={campaignId} clip={clip} scheduled={scheduled} busy={Boolean(job)} />
           </>
@@ -471,21 +599,9 @@ function ClipTile({ campaignId, clip, job, scheduled, onOpen }: { campaignId: st
  * takes it off again and moves every later clip up a slot.
  */
 function YouTubeBlock({ campaignId, clip, schedule, blocked }: { campaignId: string; clip: RenderedClip; schedule?: YouTubeSchedule; blocked: boolean }) {
-  const queryClient = useQueryClient()
   const [armed, setArmed] = useState(false)
   const job = scheduleFor(clip, schedule?.items)
-  const add = useMutation({
-    mutationFn: () => api.scheduleOnYouTube(campaignId, {
-      outputRelativePath: clip.relativePath, editPlanId: clip.editPlanId, title: clip.title || clip.fileName,
-      caption: clip.caption ?? "", idempotencyKey: crypto.randomUUID(),
-    }),
-    onSuccess: (created) => {
-      toast.success(`Scheduled. Goes public ${formatSlot(created.scheduledPublishAt)}.`)
-      queryClient.invalidateQueries({ queryKey: scheduleQueryKey })
-    },
-    onError: (error) => toast.error(getErrorMessage(error)),
-    onSettled: () => setArmed(false),
-  })
+  const add = useScheduleOnYouTube(campaignId, clip, () => setArmed(false))
   if (!schedule) return null
   const ready = schedule.connected && schedule.canManage
   return (
@@ -503,11 +619,11 @@ function YouTubeBlock({ campaignId, clip, schedule, blocked }: { campaignId: str
           </div>
         </>
       ) : !ready ? (
-        <p className="text-[11px] text-[var(--fg-muted)]">{schedule.message} Set it up under Publishing, then YouTube schedule.</p>
+        <p className="text-[11px] text-[var(--fg-muted)]">{schedule.message}{mustChoosePage(schedule) ? "" : " Set it up under Publishing, then YouTube schedule."}</p>
       ) : armed ? (
         <div className="space-y-2">
           <p className="text-[11px] text-[var(--fg-body)]">
-            Uploads <strong>{clip.title || clip.fileName}</strong>{schedule.channel ? <> to <strong>{schedule.channel}</strong></> : null} as private.
+            Uploads <strong>{clip.title || clip.fileName}</strong>{schedule.channel ? <> to <strong>{schedule.channel}</strong></> : null} now, as private.
             YouTube makes it public <strong>{formatSlot(schedule.nextFreeSlot)}</strong>.
           </p>
           <div className="flex gap-2">
@@ -855,7 +971,8 @@ export function RenderedClipsCard({ campaignId, editStyle }: { campaignId: strin
   const trackedIds = useMemo(() => [...new Set([...Object.values(renderJobs), ...Object.values(repairJobs)])].sort(), [renderJobs, repairJobs])
   const watching = trackedIds.length > 0
 
-  const schedule = useYouTubeSchedule()
+  // The page this campaign posts to, so slots, badges and buttons are that page's and no other's.
+  const schedule = useYouTubeSchedule({ campaignId })
   const clips = useQuery({
     queryKey: ["campaign", campaignId, "outputs"],
     queryFn: () => api.renderedClips(campaignId),
@@ -908,7 +1025,38 @@ export function RenderedClipsCard({ campaignId, editStyle }: { campaignId: strin
     return () => window.clearTimeout(timer)
   }, [jobById, repairJobs])
 
-  const paged = usePagination(clips.data ?? [], CLIPS_PER_PAGE, campaignId)
+  // "Cars only" hides every clip that is not a car clip. Nothing is moved; switching it off shows them all again.
+  // Remembered per campaign.
+  const carsKey = `cars-only:${campaignId}`
+  const [carsOnly, setCarsOnly] = useState(() => {
+    try { return window.localStorage.getItem(carsKey) === "1" }
+    catch { return false }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem(carsKey, carsOnly ? "1" : "0") }
+    catch { /* The switch still works for this session if browser storage is unavailable. */ }
+  }, [carsKey, carsOnly])
+  // The YouTube switch keeps the clips that are public or on the schedule, then the ones that are not: what has
+  // gone out, and what is still free to post. Remembered per campaign, and only offered once the schedule is known.
+  const youtubeKey = `youtube-filter:${campaignId}`
+  const [youtubeChoice, setYouTubeChoice] = useState<YouTubeFilter>(() => {
+    try {
+      const saved = window.localStorage.getItem(youtubeKey)
+      return saved === "on" || saved === "off" ? saved : "all"
+    } catch { return "all" }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem(youtubeKey, youtubeChoice) }
+    catch { /* The switch still works for this session if browser storage is unavailable. */ }
+  }, [youtubeKey, youtubeChoice])
+  const scheduleItems = schedule.data?.items
+  const youtube: YouTubeFilter = schedule.data ? youtubeChoice : "all"
+  const shown = useMemo(() => (clips.data ?? []).filter((clip) => (!carsOnly || clip.car)
+    && (youtube === "all" || Boolean(scheduleFor(clip, scheduleItems)) === (youtube === "on"))),
+  [clips.data, carsOnly, youtube, scheduleItems])
+  const filtered = carsOnly || youtube !== "all"
+
+  const paged = usePagination(shown, CLIPS_PER_PAGE, `${campaignId}:${carsOnly ? "cars" : "all"}:${youtube}`)
   // A finished re-render replaces the file, so the path we opened disappears. Fall back to the clip
   // with the same title - the replacement - rather than snapping the dialog shut mid-review.
   const open = clips.data?.find((clip) => clip.relativePath === openPath)
@@ -933,13 +1081,29 @@ export function RenderedClipsCard({ campaignId, editStyle }: { campaignId: strin
         <div>
           <div className="mb-2 flex items-center gap-2">
             <CardTitle>Rendered clips</CardTitle>
-            {clips.data?.length ? <Badge variant="success">{clips.data.length}</Badge> : null}
+            {clips.data?.length ? <Badge variant="success">{filtered ? `${shown.length} of ${clips.data.length}` : clips.data.length}</Badge> : null}
             {watching ? <Badge variant="warning">{Object.keys(renderJobs).length} re-rendering</Badge> : null}
           </div>
           <CardDescription>Every finished edit in this campaign. Click one to play it, swap its song or re-cut the mix.</CardDescription>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          {clips.data?.length ? <MoveAllToDrive campaignId={campaignId} clips={clips.data} schedule={schedule.data} busyPlans={busyPlans} /> : null}
+          {clips.data?.length ? (
+            <Button variant={carsOnly ? "brand" : "outline"} size="sm" aria-pressed={carsOnly} onClick={() => setCarsOnly((current) => !current)}
+              title={carsOnly ? "Showing car clips only. Click to show every clip." : "Hide every clip that is not a car clip."}>
+              <CarFront /> Cars only
+            </Button>
+          ) : null}
+          {clips.data?.length && schedule.data ? (
+            <Button variant={youtube === "all" ? "outline" : "brand"} size="sm" aria-pressed={youtube !== "all"}
+              onClick={() => setYouTubeChoice((current) => current === "all" ? "on" : current === "on" ? "off" : "all")}
+              title={youtube === "all" ? "Show only the clips that are public or scheduled on YouTube."
+                : youtube === "on" ? "Showing clips that are public or scheduled on YouTube. Click to show the ones that are not."
+                : "Showing clips that are not on YouTube yet. Click to show every clip."}>
+              <SquarePlay /> {youtube === "off" ? "Not on YouTube" : "On YouTube"}
+            </Button>
+          ) : null}
+          {/* Works on the clips in view, so nothing hidden by a filter is moved unseen. */}
+          {clips.data?.length ? <MoveAllToDrive campaignId={campaignId} clips={shown} schedule={schedule.data} busyPlans={busyPlans} /> : null}
           {clips.data?.length ? <Button variant="ghost" size="icon" aria-label="Copy output folder path" onClick={copyFolder}><Copy /></Button> : null}
           <Button variant="ghost" size="icon" aria-label="Refresh clips"
             onClick={() => queryClient.invalidateQueries({ queryKey: ["campaign", campaignId, "outputs"] })}>
@@ -948,9 +1112,22 @@ export function RenderedClipsCard({ campaignId, editStyle }: { campaignId: strin
         </div>
       </CardHeader>
       <CardContent>
+        {schedule.data ? <CampaignYouTubePage campaignId={campaignId} schedule={schedule.data} /> : null}
         <DefaultVolumes campaignId={campaignId} editStyle={editStyle} />
         {clips.isLoading ? (
           <p className="py-6 text-center text-sm text-[var(--fg-muted)]">Loading clips...</p>
+        ) : clips.data?.length && shown.length === 0 && youtube !== "all" ? (
+          <EmptyState
+            title={youtube === "on" ? "Nothing on YouTube yet" : "Every clip here is on YouTube"}
+            description={`${youtube === "on" ? "No clip is public or scheduled" : "No clip is left to post"}${carsOnly ? " among the car clips" : ""}. Click the YouTube button again to see other clips.`}
+            icon={<SquarePlay className="size-6" />}
+          />
+        ) : clips.data?.length && shown.length === 0 ? (
+          <EmptyState
+            title="No car clips here"
+            description="A clip counts when its title or caption names a car, or when you mark it with the car button on its tile. Turn off Cars only to see every clip."
+            icon={<CarFront className="size-6" />}
+          />
         ) : clips.data?.length ? (
           <>
             <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-4">
@@ -960,6 +1137,7 @@ export function RenderedClipsCard({ campaignId, editStyle }: { campaignId: strin
                   campaignId={campaignId}
                   clip={clip}
                   job={clip.editPlanId ? jobById.get(renderJobs[clip.editPlanId]) ?? jobById.get(repairJobs[clip.editPlanId]) : undefined}
+                  schedule={schedule.data}
                   scheduled={scheduleFor(clip, schedule.data?.items)}
                   onOpen={() => { setOpenPath(clip.relativePath); setOpenTitle(clip.title ?? null) }}
                 />

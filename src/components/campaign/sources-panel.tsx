@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Download, ExternalLink, FileVideo, Link2, LoaderCircle, Play, PlayCircle, ShieldCheck, Subtitles, Trash2 } from "lucide-react"
+import { CarFront, Download, ExternalLink, FileVideo, Link2, LoaderCircle, Play, PlayCircle, ShieldCheck, Subtitles, Trash2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
@@ -54,6 +54,20 @@ function SourceCard({ campaign, source }: { campaign: CampaignDetail; source: So
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
+  // Car clips are a second pass over the same video, so having clips already does not block it:
+  // the run skips every moment that has one.
+  const carClips = useMutation({
+    mutationFn: () => api.startSourcePipeline(campaignId, source.id, "cars"),
+    onSuccess: () => {
+      toast.success("Queued: car clips. Only moments where a car is on screen")
+      queryClient.invalidateQueries({ queryKey: ["jobs"] })
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  // Goes by the link, not by isVideo: a vlog queued by its URL has clips long before anything records its
+  // length, and eight of the ten car vlogs were like that. A channel or profile link never matches.
+  const offersCarClips = campaign.editStyle?.style === "NarratedLuxury" && /(youtube\.com\/(watch\?|shorts\/|live\/)|youtu\.be\/)/i.test(source.url ?? "")
   const remove = useMutation({
     mutationFn: () => api.deleteSource(campaignId, source.id),
     onSuccess: (result) => {
@@ -72,7 +86,7 @@ function SourceCard({ campaign, source }: { campaign: CampaignDetail; source: So
         <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">{formatDuration(source.durationSeconds)}</span>
       </div>
       <div className="min-w-0"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant={downloaded ? "success" : source.status === "Failed" ? "destructive" : "secondary"}>{source.status || "Added"}</Badge>{source.hasTranscript && <Badge variant="default"><Subtitles /> Transcript</Badge>}</div><h3 className="truncate text-sm font-semibold text-ink">{source.title || source.url}</h3><p className="mt-1 truncate text-xs text-[var(--fg-muted)]">{source.uploader || "Remote source"} {source.publishedOn ? `· Published ${formatDay(source.publishedOn)}` : ""} {source.format ? `· ${source.format}` : ""} {source.fileSizeBytes ? `· ${formatBytes(source.fileSizeBytes)}` : ""}</p>{source.localPath && <p className="mt-2 truncate font-mono text-[10px] text-[var(--fg-muted)]" title={source.localPath}>{source.localPath}</p>}</div>
-      <div className="flex gap-2 md:flex-col"><Button variant="brand" title={blocked ?? "Download, find highlights, render the clips, then delete the video."} disabled={Boolean(blocked) || process.isPending} onClick={() => process.mutate()}>{process.isPending ? <LoaderCircle className="animate-spin" /> : <Play />} Process this source</Button>{source.isLocalFile ? <Badge variant="secondary">Local file</Badge> : <Button variant="outline" onClick={() => download.mutate()} disabled={download.isPending}><Download /> {download.isPending ? "Queuing…" : downloaded ? "Refresh" : "Download"}</Button>}{source.url ? <Button variant="ghost" asChild><a href={source.url} target="_blank" rel="noreferrer"><ExternalLink /> Source</a></Button> : null}<Button variant="ghost" size="icon" aria-label={`Remove ${source.title}`} title="Remove from campaign (the downloaded file is kept)" onClick={() => remove.mutate()} disabled={remove.isPending}><Trash2 /></Button></div>
+      <div className="flex gap-2 md:flex-col"><Button variant="brand" title={blocked ?? "Download, find highlights, render the clips, then delete the video."} disabled={Boolean(blocked) || process.isPending} onClick={() => process.mutate()}>{process.isPending ? <LoaderCircle className="animate-spin" /> : <Play />} Process this source</Button>{offersCarClips ? <Button variant="outline" title="Looks at the video's picture and makes clips only from moments where a car is on screen. Moments that already have a clip are skipped." disabled={carClips.isPending} onClick={() => carClips.mutate()}>{carClips.isPending ? <LoaderCircle className="animate-spin" /> : <CarFront />} Car clips</Button> : null}{source.isLocalFile ? <Badge variant="secondary">Local file</Badge> : <Button variant="outline" onClick={() => download.mutate()} disabled={download.isPending}><Download /> {download.isPending ? "Queuing…" : downloaded ? "Refresh" : "Download"}</Button>}{source.url ? <Button variant="ghost" asChild><a href={source.url} target="_blank" rel="noreferrer"><ExternalLink /> Source</a></Button> : null}<Button variant="ghost" size="icon" aria-label={`Remove ${source.title}`} title="Remove from campaign (the downloaded file is kept)" onClick={() => remove.mutate()} disabled={remove.isPending}><Trash2 /></Button></div>
     </div>
   )
 }

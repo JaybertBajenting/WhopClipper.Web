@@ -11,6 +11,14 @@ export function formatSlot(value?: string | null) {
   return new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date)
 }
 
+/** "Sep 26, 11:00 PM": the same slot, short enough for a button on a clip tile. */
+export function formatSlotShort(value?: string | null) {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date)
+}
+
 /** The live schedule entry for a rendered clip, matched by its plan and falling back to the file. */
 export function scheduleFor(clip: RenderedClip, items: PublishJob[] = []) {
   return items.find((item) => ACTIVE.has(item.status)
@@ -24,7 +32,7 @@ export function shortsUrl(job: PublishJob) {
 /** One line on where a scheduled clip stands. */
 export function scheduleState(job: PublishJob) {
   switch (job.status) {
-    case "Queued": return job.error ? job.error : `Uploads around ${formatSlot(job.uploadsAfter ?? job.createdAt)}`
+    case "Queued": return job.error ? job.error : "Waiting to upload"
     case "Validating":
     case "Uploading":
     case "Processing": return "Uploading to YouTube now"

@@ -3,14 +3,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { api } from "@/lib/api"
 import type { Job, RenderedClip, YouTubeSchedule } from "@/lib/types"
-import { ClipDetail } from "./rendered-clips-card"
+import { ClipDetail, ScheduleOnYouTubeButton } from "./rendered-clips-card"
 
 vi.mock("@/lib/api", () => ({
   API_BASE_URL: "http://localhost:5000/api",
   getErrorMessage: (error: Error) => error.message,
   api: { clipPreview: vi.fn(), mediaAssets: vi.fn(), rerenderClip: vi.fn(), startBrollRepair: vi.fn(),
     brollRepairCandidate: vi.fn(), applyBrollRepair: vi.fn(), deleteOutput: vi.fn(), moveToDrive: vi.fn(),
-    bringBackFromDrive: vi.fn() },
+    bringBackFromDrive: vi.fn(), scheduleOnYouTube: vi.fn() },
 }))
 
 const preview = {
@@ -136,7 +136,7 @@ describe("rendered clip review and saving", () => {
 
   it("will not delete a clip that is still waiting to go up on YouTube", async () => {
     const schedule = {
-      connected: true, canManage: true, message: "", nextFreeSlot: "2026-09-28T15:00:00Z",
+      connected: true, canManage: true, message: "", nextFreeSlot: "2026-09-28T15:00:00Z", pages: [],
       items: [{ id: "yt", editPlanId: "plan", outputRelativePath: "out/final.mp4", status: "Scheduled",
         scheduledPublishAt: "2026-09-28T15:00:00Z", title: "Test clip" }],
     } as unknown as YouTubeSchedule
@@ -169,5 +169,60 @@ describe("rendered clip review and saving", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull()
     fireEvent.click(await screen.findByRole("button", { name: "Bring back from Google Drive" }))
     await waitFor(() => expect(api.bringBackFromDrive).toHaveBeenCalledWith("campaign", "out/final.mp4"))
+  })
+})
+
+describe("scheduling a clip on YouTube from its tile", () => {
+  const ready = { connected: true, canManage: true, message: "Ready.", nextFreeSlot: "2026-10-04T15:00:00Z", items: [], pages: [], pageId: "tjr" } as unknown as YouTubeSchedule
+  const tile = (props: Partial<Parameters<typeof ScheduleOnYouTubeButton>[0]> = {}) => render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
+      <ScheduleOnYouTubeButton campaignId="campaign" clip={{ ...clip, caption: "Caption #TJR" }} schedule={ready} {...props} />
+    </QueryClientProvider>)
+
+  afterEach(cleanup)
+  beforeEach(() => vi.resetAllMocks())
+
+  it("uploads nothing on the first click, and sends the clip's own title and caption on the second", async () => {
+    vi.mocked(api.scheduleOnYouTube).mockResolvedValue({ id: "yt", scheduledPublishAt: "2026-10-04T15:00:00Z" } as never)
+    tile()
+
+    fireEvent.click(screen.getByRole("button", { name: "Schedule Test clip on YouTube" }))
+    expect(api.scheduleOnYouTube).not.toHaveBeenCalled()
+
+    const confirm = screen.getByRole("button", { name: "Confirm: Schedule Test clip on YouTube" })
+    expect(confirm.getAttribute("title")).toMatch(/^Uploads now as private\. Goes public /)
+    fireEvent.click(confirm)
+    await waitFor(() => expect(api.scheduleOnYouTube).toHaveBeenCalledWith("campaign", expect.objectContaining({
+      outputRelativePath: "out/final.mp4", editPlanId: "plan", title: "Test clip", caption: "Caption #TJR",
+    })))
+  })
+
+  it("is hidden for a clip already on the schedule, and off until YouTube is connected or a re-render ends", () => {
+    const { unmount } = tile({ scheduled: { id: "yt", status: "Scheduled" } as never })
+    expect(screen.queryByRole("button")).toBeNull()
+    unmount()
+
+    tile({ schedule: { ...ready, connected: false } })
+    const offline = screen.getByRole("button", { name: "Schedule Test clip on YouTube" })
+    expect(offline).toBeDisabled()
+    expect(offline).toHaveAttribute("title", "Connect YouTube under Publishing first.")
+    cleanup()
+
+    tile({ busy: true })
+    expect(screen.getByRole("button", { name: "Schedule Test clip on YouTube" })).toHaveAttribute("title", "Wait for the re-render to finish.")
+  })
+
+  it("will not schedule while the campaign has several pages to choose from and none chosen", () => {
+    const pages = [{ id: "tjr", label: "@TJRDaily", ready: true }, { id: "dc", label: "@DoubleCoverageClips", ready: true }]
+    tile({ schedule: { ...ready, pages, pageId: null, connected: false } })
+    const waiting = screen.getByRole("button", { name: "Schedule Test clip on YouTube" })
+    expect(waiting).toBeDisabled()
+    expect(waiting).toHaveAttribute("title", "Choose this campaign's YouTube page first, above the clips.")
+    cleanup()
+
+    tile({ schedule: { ...ready, pages, pageId: "dc", channel: "@DoubleCoverageClips" } })
+    fireEvent.click(screen.getByRole("button", { name: "Schedule Test clip on YouTube" }))
+    expect(screen.getByRole("button", { name: "Confirm: Schedule Test clip on YouTube" }).getAttribute("title"))
+      .toMatch(/^Uploads now to @DoubleCoverageClips as private\./)
   })
 })
