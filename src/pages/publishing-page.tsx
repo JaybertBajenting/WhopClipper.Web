@@ -1,18 +1,24 @@
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { CalendarClock, Link2, Send, ShieldCheck, UserRoundPlus } from "lucide-react"
+import { CalendarClock, Link2, Send, ShieldCheck, Smartphone, UserRoundPlus } from "lucide-react"
 import { api, getErrorMessage } from "@/lib/api"
 import { AccountKitPanel } from "@/components/publishing/account-kit-panel"
 import { ConnectionsPanel } from "@/components/publishing/connections-panel"
 import { PublisherPanel } from "@/components/publishing/publisher-panel"
 import { YouTubeSchedulePanel } from "@/components/publishing/youtube-schedule-panel"
+import { PhoneAppPanel } from "@/components/publishing/phone-app-panel"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ErrorState, LoadingPage, PageHeader } from "@/components/page"
 
 export function PublishingPage() {
+  const [tab, setTab] = useState("accounts")
   const campaigns = useQuery({ queryKey: ["campaigns"], queryFn: () => api.campaigns(false), retry: 1 })
   const guides = useQuery({ queryKey: ["publishing", "guides"], queryFn: api.publishingGuides, retry: 1, staleTime: 5 * 60_000 })
+  // The phone app's screen stays out of sight until its PC half is switched on.
+  const phone = useQuery({ queryKey: ["publishing", "phone-app-enabled"], queryFn: api.phoneAppEnabled, retry: false, staleTime: Infinity })
+  const phoneApp = phone.data?.enabled === true
   if (campaigns.isLoading || guides.isLoading) return <LoadingPage cards={3} />
   if (campaigns.isError || guides.isError) return <ErrorState title="Publishing workspace unavailable" message={getErrorMessage(campaigns.error || guides.error)} onRetry={() => { campaigns.refetch(); guides.refetch() }} />
   return (
@@ -23,14 +29,14 @@ export function PublishingPage() {
         <Card><CardContent className="flex items-center gap-3 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[var(--surface-info)] text-[var(--info-text)]"><ShieldCheck className="size-5" /></span><div><p className="text-sm font-semibold">Encrypted local connections</p><p className="mt-0.5 text-xs text-[var(--fg-muted)]">Write-only OAuth secrets</p></div></CardContent></Card>
         <Card><CardContent className="flex items-center gap-3 p-4"><span className="grid size-10 place-items-center rounded-xl bg-[var(--surface-warning)] text-[var(--warning-text)]"><Send className="size-5" /></span><div><p className="text-sm font-semibold">Review before every post</p><p className="mt-0.5 text-xs text-[var(--fg-muted)]">TikTok remains manual</p></div></CardContent></Card>
       </div>
-      <Tabs defaultValue="accounts">
-        <div className="mb-5 overflow-x-auto pb-1"><TabsList className="min-w-max"><TabsTrigger value="accounts"><UserRoundPlus /> Account setup <Badge variant="default">Per campaign</Badge></TabsTrigger><TabsTrigger value="connections"><Link2 /> Connections</TabsTrigger><TabsTrigger value="publish"><Send /> Upload videos</TabsTrigger><TabsTrigger value="schedule"><CalendarClock /> YouTube schedule</TabsTrigger></TabsList></div>
+      <Tabs value={tab} onValueChange={setTab}>
+        <div className="mb-5 overflow-x-auto pb-1"><TabsList className="min-w-max"><TabsTrigger value="accounts"><UserRoundPlus /> Account setup <Badge variant="default">Per campaign</Badge></TabsTrigger><TabsTrigger value="connections"><Link2 /> Connections</TabsTrigger><TabsTrigger value="publish"><Send /> Upload videos</TabsTrigger><TabsTrigger value="schedule"><CalendarClock /> YouTube schedule</TabsTrigger>{phoneApp ? <TabsTrigger value="phone"><Smartphone /> Phone app</TabsTrigger> : null}</TabsList></div>
         <TabsContent value="accounts"><AccountKitPanel campaigns={campaigns.data ?? []} guides={guides.data ?? []} /></TabsContent>
         <TabsContent value="connections"><ConnectionsPanel guides={guides.data ?? []} /></TabsContent>
         <TabsContent value="publish"><PublisherPanel campaigns={campaigns.data ?? []} guides={guides.data ?? []} /></TabsContent>
-        <TabsContent value="schedule"><YouTubeSchedulePanel /></TabsContent>
+        <TabsContent value="schedule"><YouTubeSchedulePanel onOpenConnections={() => setTab("connections")} /></TabsContent>
+        {phoneApp ? <TabsContent value="phone"><PhoneAppPanel /></TabsContent> : null}
       </Tabs>
     </div>
   )
 }
-

@@ -335,6 +335,8 @@ export interface RenderedClip {
   /** The video the clip was cut from, and the day that video was published. The list comes newest video first. */
   sourceTitle?: string | null
   sourcePublishedOn?: string | null
+  /** Whether this is a car clip: a car named in its title or caption, or a mark set by hand. "Cars only" keeps these. */
+  car?: boolean
 }
 
 export interface CampaignDetail extends CampaignSummary {
@@ -620,6 +622,10 @@ export interface AccountKit {
 }
 
 export interface PublishingConnectionStatus {
+  /** One page of the platform. YouTube can have several; null until the platform has any. */
+  id?: string | null
+  /** The channel name YouTube reports for this sign-in, once it has been read. */
+  channelTitle?: string | null
   platform: PublishingPlatform
   connectionMode: PublishingConnectionMode
   status: PublishingConnectionState
@@ -683,8 +689,6 @@ export interface PublishJob {
   editPlanId?: string | null
   /** The daily slot at which YouTube makes a scheduled clip public. */
   scheduledPublishAt?: string | null
-  /** A scheduled clip still waiting to upload starts uploading at this time. */
-  uploadsAfter?: string | null
   notificationScheduled?: boolean
 }
 
@@ -692,7 +696,6 @@ export interface YouTubeScheduleSettings {
   slots: string[]
   timeZoneId: string
   timeZoneName: string
-  uploadWindowHours: number
 }
 
 export interface PhoneNotificationSettings {
@@ -702,7 +705,18 @@ export interface PhoneNotificationSettings {
   subscribeUrl: string
 }
 
+/** One connected YouTube page, for a selector. */
+export interface YouTubePage {
+  id: string
+  label: string
+  /** Signed in with both permissions, so it can take a scheduled clip. */
+  ready: boolean
+}
+
 export interface YouTubeSchedule {
+  /** The page this schedule is for. Null when there is none, or a campaign has yet to choose one. */
+  pageId?: string | null
+  pages: YouTubePage[]
   settings: YouTubeScheduleSettings
   notifications: PhoneNotificationSettings
   connected: boolean
